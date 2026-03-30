@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delta δ Portal — Gestion des Notes</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --red: #E63946;
+  --dark: #0d0d14;
+  --dark2: #111120;
+  --dark3: #0a0a12;
+  --border: #1e1e2e;
+  --border2: #2e2e42;
+  --text: #f0efe8;
+  --muted: #5a5a7a;
+  --muted2: #9090b8;
+  --light-bg: #f6f5f0;
+  --light-border: #e8e7e0;
+  --light-text: #1a1a2e;
+  --green: #22c55e;
+  --orange: #f97316;
+}
+body { font-family: 'DM Sans', sans-serif; background: var(--dark); color: var(--text); min-height: 100vh; }
+
+/* ===== LOGIN ===== */
+#login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dark);
+  position: relative;
+  overflow: hidden;
+}
+#login-screen::before {
+  content: 'δ';
+  position: fixed;
+  right: -80px;
+  bottom: -60px;
+  font-family: 'Syne', sans-serif;
+  font-size: 400px;
+  font-weight: 800;
+  color: rgba(230,57,70,0.04);
+  pointer-events: none;
+  line-height: 1;
+}
+.login-card {
+  background: #111120;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 48px;
+  width: 420px;
+  position: relative;
+  z-index: 1;
+}
+.login-logo {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: 24px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.login-logo .delta-red { color: var(--red); }
+.login-subtitle { font-size: 13px; color: var(--muted); margin-bottom: 40px; }
+.login-label { font-size: 12px; color: var(--muted2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 500; }
+.login-input {
+  width: 100%;
+  background: var(--dark3);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: 'DM Sans', sans-serif;
+  margin-bottom: 20px;
+  transition: border-color 0.2s;
+}
+.login-input:focus { outline: none; border-color: var(--red); }
+.login-btn {
+  width: 100%;
+  background: var(--red);
+  color: #fff;
+  border: none;
+  padding: 13px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: background 0.2s, transform 0.1s;
+  margin-top: 4px;
+}
+.login-btn:hover { background: #c42d39; }
+.login-btn:active { transform: scale(0.98); }
+.login-error { color: #f87171; font-size: 13px; margin-top: 10px; display: none; }
+.login-switch { text-align: center; margin-top: 24px; font-size: 12px; color: var(--muted); }
+.login-switch a { color: var(--red); cursor: pointer; text-decoration: none; }
+.login-switch a:hover { text-decoration: underline; }
+
+/* ===== ADMIN APP ===== */
+#admin-app { display: none; min-height: 100vh; }
+.app-header {
+  background: var(--dark);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.app-logo {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: 17px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.app-logo .red { color: var(--red); }
+.header-right { display: flex; align-items: center; gap: 12px; }
+.badge-role {
+  background: var(--dark2);
+  border: 1px solid var(--border2);
+  color: var(--muted2);
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.btn-logout {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-logout:hover { border-color: var(--red); color: var(--red); }
+.app-nav {
+  background: var(--dark2);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+}
+.nav-tab {
+  padding: 13px 18px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.nav-tab.active { color: var(--red); border-bottom-color: var(--red); }
+.nav-tab:hover:not(.active) { color: var(--text); }
+.app-body { display: flex; min-height: calc(100vh - 105px); }
+.sidebar {
+  width: 240px;
+  background: var(--dark3);
+  border-right: 1px solid var(--border);
+  padding: 16px 0;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+.sidebar-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #3a3a5a;
+  padding: 0 14px 8px;
+  font-weight: 600;
+}
+.sidebar-item {
+  padding: 8px 14px;
+  font-size: 12.5px;
+  color: #6e6e90;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.15s;
+  margin: 1px 8px;
+  border-radius: 6px;
+}
+.sidebar-item.active { background: #1a1a2e; color: var(--text); }
+.sidebar-item:hover:not(.active) { background: #14141f; color: var(--muted2); }
+.sidebar-dot { width: 5px; height: 5px; border-radius: 50%; background: #3a3a5a; flex-shrink: 0; }
+.sidebar-item.active .sidebar-dot { background: var(--red); }
+.sidebar-pilier { 
+  font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: #2e2e4e; padding: 12px 14px 4px; font-weight: 600;
+}
+.main { flex: 1; padding: 28px; overflow-y: auto; max-width: 100%; }
+.page-header { margin-bottom: 24px; }
+.page-title { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 22px; color: #fff; margin-bottom: 4px; }
+.page-sub { font-size: 13px; color: var(--muted); }
+
+/* Stats row */
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+.stat-card {
+  background: var(--dark2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.stat-lbl { font-size: 10px; color: #4a4a6a; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.stat-val { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; color: #fff; }
+.stat-val small { font-size: 12px; color: var(--muted); font-family: 'DM Sans', sans-serif; font-weight: 400; }
+
+/* Controls */
+.controls-row { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap; }
+.select-s {
+  background: var(--dark2);
+  border: 1px solid var(--border2);
+  color: var(--muted2);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: 'DM Sans', sans-serif;
+  appearance: none;
+  cursor: pointer;
+  min-width: 180px;
+}
+.btn-primary {
+  background: var(--red);
+  color: #fff;
+  border: none;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-primary:hover { background: #c42d39; }
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-secondary:hover { border-color: var(--muted2); color: var(--text); }
+
+/* Table */
+.table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  background: var(--dark2);
+  color: var(--muted);
+  font-weight: 500;
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #14141e;
+  color: var(--muted2);
+  vertical-align: middle;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: #0f0f1c; }
+.student-cell { display: flex; align-items: center; gap: 10px; }
+.avatar {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: #1e1e2e;
+  border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: #9090b8; font-weight: 600; flex-shrink: 0;
+}
+.grade-input {
+  background: #14141e;
+  border: 1px solid var(--border2);
+  color: var(--text);
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: 'DM Sans', sans-serif;
+  width: 60px;
+  text-align: center;
+  transition: border-color 0.2s;
+}
+.grade-input:focus { outline: none; border-color: var(--red); }
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.badge-good { background: #0e2a1a; color: #4ade80; }
+.badge-mid { background: #2a1e0a; color: #fb923c; }
+.badge-low { background: #2a0e0e; color: #f87171; }
+.badge-empty { color: #3a3a5a; font-style: italic; font-size: 12px; }
+.save-row {
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: 12px; margin-top: 20px; padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.toast-saved {
+  background: #0e2a1a; border: 1px solid #1a4a2a;
+  color: #4ade80; padding: 8px 16px; border-radius: 8px;
+  font-size: 13px; display: none; align-items: center; gap: 6px;
+}
+
+/* ===== STUDENT APP ===== */
+#student-app {
+  display: none;
+  min-height: 100vh;
+  background: var(--light-bg);
+  color: var(--light-text);
+}
+.stu-header {
+  background: var(--dark);
+  padding: 0 24px;
+  height: 56px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+}
+.stu-hero {
+  background: var(--dark);
+  padding: 32px 28px 28px;
+  position: relative; overflow: hidden;
+}
+.stu-hero::after {
+  content: 'δ'; position: absolute; right: -20px; top: -30px;
+  font-family: 'Syne', sans-serif; font-size: 140px; font-weight: 800;
+  color: rgba(230,57,70,0.06); pointer-events: none;
+}
+.hero-tag { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--red); margin-bottom: 6px; font-weight: 600; }
+.hero-name { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+.hero-class { font-size: 13px; color: var(--muted); }
+.hero-stats { display: flex; gap: 28px; margin-top: 20px; }
+.hero-stat-val { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; color: #fff; line-height: 1; }
+.hero-stat-val.accent { color: var(--red); }
+.hero-stat-lbl { font-size: 10px; color: #4a4a6a; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+.hero-sep { width: 1px; background: var(--border); align-self: stretch; margin: 2px 0; }
+.stu-body { padding: 28px; }
+.section-ttl {
+  font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700;
+  color: var(--light-text); text-transform: uppercase; letter-spacing: 1.5px;
+  margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
+}
+.section-ttl::after { content: ''; flex: 1; height: 1px; background: #d8d7d0; }
+.modules-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 28px; }
+.module-card {
+  background: #fff;
+  border: 1px solid var(--light-border);
+  border-radius: 12px;
+  padding: 16px;
+  position: relative;
+  transition: box-shadow 0.2s;
+  border-left: 4px solid #d0cfc8;
+}
+.module-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+.module-card.good { border-left-color: var(--green); }
+.module-card.mid { border-left-color: var(--orange); }
+.module-card.low { border-left-color: var(--red); }
+.module-card.pending { border-left-color: #c0c0d8; }
+.mod-name { font-weight: 500; font-size: 13px; color: var(--light-text); margin-bottom: 3px; }
+.mod-info { font-size: 11px; color: #9090a0; margin-bottom: 12px; }
+.mod-bottom { display: flex; align-items: flex-end; justify-content: space-between; }
+.mod-grade { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; color: var(--light-text); line-height: 1; }
+.mod-grade .denom { font-size: 12px; color: #9090a0; font-family: 'DM Sans', sans-serif; font-weight: 400; }
+.mod-pending { font-size: 12px; color: #c0c0d8; font-style: italic; }
+.ment { font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 500; }
+.ment-g { background: #dcfce7; color: #15803d; }
+.ment-m { background: #ffedd5; color: #c2410c; }
+.ment-l { background: #fee2e2; color: #b91c1c; }
+.ment-p { background: #f1f0e8; color: #9090a0; }
+.bulletin-card {
+  background: #fff; border: 1px solid var(--light-border);
+  border-radius: 12px; padding: 22px;
+}
+.bulletin-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.bulletin-name { font-weight: 500; font-size: 15px; color: var(--light-text); margin-bottom: 3px; }
+.bulletin-info { font-size: 13px; color: #6a6a8a; }
+.dl-btn {
+  background: var(--dark); color: #fff; border: none;
+  padding: 10px 20px; border-radius: 8px; font-size: 13px;
+  font-family: 'DM Sans', sans-serif; font-weight: 500;
+  cursor: pointer; display: flex; align-items: center; gap: 8px;
+  transition: background 0.2s;
+}
+.dl-btn:hover { background: var(--red); }
+.preview-bar {
+  background: #f6f5f0; border-radius: 8px;
+  padding: 14px 16px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+}
+.prev-lbl { font-size: 10px; color: #9090a0; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+.prev-val { font-size: 14px; font-weight: 500; color: var(--light-text); }
+.prev-val.acc { color: var(--red); }
+
+/* Tab content visibility */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* UE section in grades */
+.ue-section { margin-bottom: 32px; }
+.ue-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 12px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.ue-tag {
+  background: var(--dark2); border: 1px solid var(--border2);
+  color: var(--muted2); font-size: 10px; padding: 3px 10px;
+  border-radius: 20px; letter-spacing: 1px; text-transform: uppercase;
+}
+.ue-name { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: var(--text); }
+.pilier-badge {
+  font-size: 10px; padding: 3px 8px; border-radius: 4px; font-weight: 600;
+  letter-spacing: 0.5px; text-transform: uppercase;
+}
+.pb-product { background: #1e2a3e; color: #60a5fa; }
+.pb-operations { background: #1e2e1e; color: #4ade80; }
+.pb-growth { background: #2e1e2a; color: #f472b6; }
+.pb-data { background: #2e2a1e; color: #fb923c; }
+.pb-other { background: #2e2e2e; color: #9090b8; }
+
+/* Comment textarea */
+.comment-input {
+  background: #14141e;
+  border: 1px solid var(--border2);
+  color: var(--muted2);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
+  width: 200px;
+  resize: none;
+  height: 36px;
+  transition: border-color 0.2s;
+}
+.comment-input:focus { outline: none; border-color: var(--red); color: var(--text); }
+
+/* All students overview */
+.overview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.ov-card {
+  background: var(--dark2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px; cursor: pointer;
+  transition: all 0.2s;
+}
+.ov-card:hover { border-color: var(--red); }
+.ov-name { font-weight: 500; font-size: 13px; color: var(--text); margin-bottom: 4px; }
+.ov-class { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+.ov-avg { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; }
+.ov-avg.na { font-size: 13px; color: var(--muted); }
+
+/* Progress */
+.prog-wrap { background: var(--border); border-radius: 4px; height: 3px; width: 50px; overflow: hidden; }
+.prog-fill { height: 100%; background: var(--red); border-radius: 4px; }
+
+/* Admin students view */
+.student-code { font-family: monospace; font-size: 11px; color: var(--muted); background: var(--dark3); padding: 2px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN SCREEN ===== -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 20h20L12 2z" fill="#E63946"/><path d="M12 8l6 10H6L12 8z" fill="#0d0d14"/></svg>
+      DELTA <span class="delta-red">δ</span> PORTAL
+    </div>
+    <div class="login-subtitle">Plateforme de gestion des notes · Beta 2024/2025</div>
+
+    <div id="login-mode-admin">
+      <div class="login-label">Identifiant</div>
+      <input class="login-input" id="login-user" type="text" placeholder="admin" autocomplete="off">
+      <div class="login-label">Mot de passe</div>
+      <input class="login-input" id="login-pass" type="password" placeholder="••••••••">
+      <button class="login-btn" onclick="doLogin()">Accéder au portail →</button>
+      <div class="login-error" id="login-error">Identifiants incorrects</div>
+      <div class="login-switch">Étudiant ? <a onclick="switchMode('student')">Connectez-vous ici</a></div>
+    </div>
+
+    <div id="login-mode-student" style="display:none">
+      <div class="login-label">Code étudiant</div>
+      <input class="login-input" id="student-code-input" type="text" placeholder="ex: DELTA-TC01" autocomplete="off" style="text-transform:uppercase">
+      <div class="login-label">Mot de passe</div>
+      <input class="login-input" id="student-pass" type="password" placeholder="••••••••">
+      <button class="login-btn" onclick="doStudentLogin()">Accéder à mon espace →</button>
+      <div class="login-error" id="student-error">Code ou mot de passe incorrect</div>
+      <div class="login-switch">Équipe pédagogique ? <a onclick="switchMode('admin')">Se connecter ici</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ADMIN APP ===== -->
+<div id="admin-app">
+  <div class="app-header">
+    <div class="app-logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 20h20L12 2z" fill="#E63946"/><path d="M12 8l6 10H6L12 8z" fill="#0d0d14"/></svg>
+      DELTA <span class="red">δ</span> PORTAL
+    </div>
+    <div class="header-right">
+      <div class="badge-role">Équipe pédagogique</div>
+      <button class="btn-logout" onclick="logout()">Déconnexion</button>
+    </div>
+  </div>
+  <div class="app-nav">
+    <div class="nav-tab active" onclick="showAdminTab('notes', this)">Saisie des notes</div>
+    <div class="nav-tab" onclick="showAdminTab('etudiants', this)">Étudiants & Accès</div>
+    <div class="nav-tab" onclick="showAdminTab('bulletins', this)">Bulletins</div>
+  </div>
+  <div class="app-body">
+    <div class="sidebar" id="admin-sidebar">
+      <!-- filled by JS -->
+    </div>
+    <div class="main">
+      <!-- NOTES TAB -->
+      <div id="tab-notes" class="tab-content active">
+        <div class="page-header">
+          <div class="page-title" id="mod-title">Sélectionner un module</div>
+          <div class="page-sub" id="mod-sub">Choisissez un module dans le menu de gauche</div>
+        </div>
+        <div class="stats-row" id="mod-stats" style="display:none">
+          <div class="stat-card">
+            <div class="stat-lbl">Étudiants</div>
+            <div class="stat-val" id="st-count">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-lbl">Notes saisies</div>
+            <div class="stat-val" id="st-filled">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-lbl">Moyenne classe</div>
+            <div class="stat-val" id="st-avg">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-lbl">Taux validation</div>
+            <div class="stat-val" id="st-pass">—</div>
+          </div>
+        </div>
+        <div id="grade-table-wrap" style="display:none">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Étudiant</th>
+                  <th>Promo</th>
+                  <th>Note /20</th>
+                  <th>Mention</th>
+                  <th>Commentaire prof</th>
+                  <th>Statut</th>
+                </tr>
+              </thead>
+              <tbody id="grade-tbody"></tbody>
+            </table>
+          </div>
+          <div class="save-row">
+            <div class="toast-saved" id="toast-saved">✓ Notes enregistrées</div>
+            <button class="btn-secondary" onclick="resetGrades()">Annuler</button>
+            <button class="btn-primary" onclick="saveGrades()">Enregistrer les notes</button>
+          </div>
+        </div>
+        <div id="no-module-msg" style="text-align:center;padding:60px 0;color:var(--muted);">
+          <div style="font-size:48px;margin-bottom:16px;">📋</div>
+          <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px;">Sélectionnez un module</div>
+          <div style="font-size:13px;">Choisissez un module dans le panneau de gauche pour saisir les notes</div>
+        </div>
+      </div>
+
+      <!-- ETUDIANTS TAB -->
+      <div id="tab-etudiants" class="tab-content">
+        <div class="page-header">
+          <div class="page-title">Étudiants & Codes d'accès</div>
+          <div class="page-sub">Promotion NEXT2027 · Bachelor Entrepreneuriat & Digital</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Étudiant</th>
+                <th>Formation</th>
+                <th>Année</th>
+                <th>Code d'accès</th>
+                <th>Mot de passe</th>
+                <th>Modules notés</th>
+              </tr>
+            </thead>
+            <tbody id="students-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- BULLETINS TAB -->
+      <div id="tab-bulletins" class="tab-content">
+        <div class="page-header">
+          <div class="page-title">Génération des bulletins</div>
+          <div class="page-sub">Génère et télécharge les bulletins individuels au format PDF</div>
+        </div>
+        <div class="overview-grid" id="bulletins-grid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== STUDENT APP ===== -->
+<div id="student-app">
+  <div class="stu-header">
+    <div class="app-logo">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 20h20L12 2z" fill="#E63946"/><path d="M12 8l6 10H6L12 8z" fill="#0d0d14"/></svg>
+      DELTA <span class="red">δ</span> PORTAL
+    </div>
+    <div class="header-right">
+      <span id="stu-name-header" style="font-size:13px;color:var(--muted2);"></span>
+      <button class="btn-logout" onclick="logout()">Déconnexion</button>
+    </div>
+  </div>
+  <div class="stu-hero">
+    <div class="hero-tag">Espace étudiant</div>
+    <div class="hero-name" id="stu-hero-name">Bienvenue</div>
+    <div class="hero-class" id="stu-hero-class"></div>
+    <div class="hero-stats">
+      <div>
+        <div class="hero-stat-val" id="stu-avg-display">—</div>
+        <div class="hero-stat-lbl">Moyenne générale</div>
+      </div>
+      <div class="hero-sep"></div>
+      <div>
+        <div class="hero-stat-val" id="stu-modules-count">—</div>
+        <div class="hero-stat-lbl">Modules</div>
+      </div>
+      <div class="hero-sep"></div>
+      <div>
+        <div class="hero-stat-val accent" id="stu-pending">—</div>
+        <div class="hero-stat-lbl">En attente</div>
+      </div>
+      <div class="hero-sep"></div>
+      <div>
+        <div class="hero-stat-val" id="stu-mention">—</div>
+        <div class="hero-stat-lbl">Mention</div>
+      </div>
+    </div>
+  </div>
+  <div class="stu-body">
+    <div class="section-ttl">Mes modules</div>
+    <div class="modules-grid" id="stu-modules-grid"></div>
+    <div class="section-ttl">Mon bulletin</div>
+    <div class="bulletin-card">
+      <div class="bulletin-top">
+        <div>
+          <div class="bulletin-name">Bulletin S1 — 2024/2025</div>
+          <div class="bulletin-info" id="stu-bulletin-info">Bachelor · Promotion NEXT2027</div>
+        </div>
+        <button class="dl-btn" onclick="downloadBulletin()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Télécharger PDF
+        </button>
+      </div>
+      <div class="preview-bar">
+        <div><div class="prev-lbl">Étudiant</div><div class="prev-val" id="stu-bulletin-name">—</div></div>
+        <div><div class="prev-lbl">Moyenne générale</div><div class="prev-val acc" id="stu-bulletin-avg">—</div></div>
+        <div><div class="prev-lbl">Mention</div><div class="prev-val" id="stu-bulletin-mention">—</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================================================================
+// DATA
+// ================================================================
+const MODULES = [
+  // UE1 - Product
+  { id:'M1.1', ue:'UE1', ueName:"Etablir l'architecture de son produit", pilier:'Product', nom:'Architecture Web & relations développeurs', heures:24, promo:'B1' },
+  { id:'M1.2', ue:'UE1', ueName:"Etablir l'architecture de son produit", pilier:'Product', nom:'Introduction au Product Management', heures:25, promo:'B1' },
+  { id:'M1.3', ue:'UE1', ueName:"Etablir l'architecture de son produit", pilier:'Product', nom:'Design Thinking', heures:15, promo:'B1' },
+  { id:'M1.4', ue:'UE1', ueName:"Etablir l'architecture de son produit", pilier:'Product', nom:'Ergonomie, UX & UI Design', heures:21, promo:'B1' },
+  { id:'M1.5', ue:'UE1', ueName:"Etablir l'architecture de son produit", pilier:'Product', nom:'Figma & Web Design', heures:7, promo:'B1' },
+  { id:'M1.6', ue:'UE1', ueName:"Etablir l'architecture de son produit", pilier:'Product', nom:'Atelier Glide', heures:7, promo:'B1' },
+  { id:'M1.7', ue:'UE1', ueName:"Etablir l'architecture de son produit", pilier:'Product', nom:'Bootcamp Product', heures:21, promo:'B1' },
+  // UE2 - Operations
+  { id:'M2.1', ue:'UE2', ueName:"Organiser et initier les opérations", pilier:'Operations', nom:'Entreprise & Organisation', heures:18, promo:'B1' },
+  { id:'M2.2', ue:'UE2', ueName:"Organiser et initier les opérations", pilier:'Operations', nom:'Finance pour entrepreneurs — Corporate Finance', heures:30, promo:'B1' },
+  { id:'M2.3', ue:'UE2', ueName:"Organiser et initier les opérations", pilier:'Operations', nom:'Finance pour entrepreneurs — Stratégie financière', heures:15, promo:'B1' },
+  { id:'M2.4', ue:'UE2', ueName:"Organiser et initier les opérations", pilier:'Operations', nom:'Introduction au droit des sociétés', heures:10, promo:'B1' },
+  { id:'M2.5', ue:'UE2', ueName:"Organiser et initier les opérations", pilier:'Operations', nom:'Concepts Finance Carbone', heures:18, promo:'B1' },
+  { id:'M2.6', ue:'UE2', ueName:"Organiser et initier les opérations", pilier:'Operations', nom:'Prendre la parole en public & rhétorique', heures:14, promo:'B1' },
+  { id:'M2.7', ue:'UE2', ueName:"Organiser et initier les opérations", pilier:'Operations', nom:"Développer son esprit critique", heures:15, promo:'B1' },
+  { id:'M2.8', ue:'UE2', ueName:"Organiser et initier les opérations", pilier:'Operations', nom:'Bootcamp Opérations', heures:21, promo:'B1' },
+  { id:'M2.9', ue:'UE2', ueName:"Organiser et initier les opérations", pilier:'Operations', nom:'Intelligence Collective', heures:12, promo:'B1' },
+  // UE3 - Growth
+  { id:'M3.1', ue:'UE3', ueName:"Plateforme de marque et stratégie client", pilier:'Growth & Sales', nom:"Culture Marketing de l'entrepreneur", heures:20, promo:'B1' },
+  { id:'M3.2', ue:'UE3', ueName:"Plateforme de marque et stratégie client", pilier:'Growth & Sales', nom:'Stratégie narrative & Content Marketing', heures:21, promo:'B1' },
+  { id:'M3.3', ue:'UE3', ueName:"Plateforme de marque et stratégie client", pilier:'Growth & Sales', nom:'Les fondamentaux du Marketing Digital', heures:18, promo:'B1' },
+  { id:'M3.4', ue:'UE3', ueName:"Plateforme de marque et stratégie client", pilier:'Growth & Sales', nom:"Stratégie d'acquisition", heures:16, promo:'B1' },
+  { id:'M3.5', ue:'UE3', ueName:"Plateforme de marque et stratégie client", pilier:'Growth & Sales', nom:'Assurer son personal branding', heures:16, promo:'B1' },
+  { id:'M3.6', ue:'UE3', ueName:"Plateforme de marque et stratégie client", pilier:'Growth & Sales', nom:'Négocier & Convaincre', heures:20, promo:'B1' },
+  { id:'M3.7', ue:'UE3', ueName:"Plateforme de marque et stratégie client", pilier:'Growth & Sales', nom:'Bootcamp Growth Marketing & Sales', heures:21, promo:'B1' },
+  // UE4 - Data
+  { id:'M4.1', ue:'UE4', ueName:"Collecter et structurer la donnée", pilier:'Data', nom:'Web 3.0 & Blockchain', heures:16, promo:'B1' },
+  { id:'M4.2', ue:'UE4', ueName:"Collecter et structurer la donnée", pilier:'Data', nom:"S'initier au SQL", heures:12, promo:'B1' },
+  { id:'M4.3', ue:'UE4', ueName:"Collecter et structurer la donnée", pilier:'Data', nom:'Maîtriser les fondamentaux bureautiques', heures:15, promo:'B1' },
+  { id:'M4.4', ue:'UE4', ueName:"Collecter et structurer la donnée", pilier:'Data', nom:'Introduction — Intelligence Artificielle & Vibe-coding', heures:21, promo:'B1' },
+  { id:'M4.5', ue:'UE4', ueName:"Collecter et structurer la donnée", pilier:'Data', nom:'Introduction à la Data Analyse', heures:20, promo:'B1' },
+  { id:'M4.6', ue:'UE4', ueName:"Collecter et structurer la donnée", pilier:'Data', nom:'Bootcamp Data & IA', heures:21, promo:'B1' },
+  // UE5 - Other
+  { id:'M5.1', ue:'UE5', ueName:"Valoriser ses compétences professionnelles", pilier:'Other', nom:'LV1 : Business in English', heures:32, promo:'B1' },
+  { id:'M5.2', ue:'UE5', ueName:"Valoriser ses compétences professionnelles", pilier:'Other', nom:'Développement & Accompagnement en Soft Skills', heures:21, promo:'B1' },
+  { id:'M5.3', ue:'UE5', ueName:"Valoriser ses compétences professionnelles", pilier:'Other', nom:"Cycle de conférences — Entrepreneuriat & Intrapreneuriat", heures:20, promo:'B1' },
+];
+
+const STUDENTS = [
+  { id:'STU001', prenom:'Nathanaël', nom:'Grenot', code:'DELTA-NG01', password:'delta2025', promo:'Bachelor 1', annee:1 },
+  { id:'STU002', prenom:'Maximilien', nom:'Chazalette', code:'DELTA-MC02', password:'delta2025', promo:'Bachelor 1', annee:1 },
+  { id:'STU003', prenom:'Kilian', nom:'Vincens', code:'DELTA-KV03', password:'delta2025', promo:'Bachelor 1', annee:1 },
+  { id:'STU004', prenom:'Timothée', nom:'Carrel', code:'DELTA-TC04', password:'delta2025', promo:'Bachelor 2', annee:2 },
+  { id:'STU005', prenom:'Ewan', nom:'Chesnay', code:'DELTA-EC05', password:'delta2025', promo:'Bachelor 2', annee:2 },
+  { id:'STU006', prenom:'Ivo', nom:'Toulouse', code:'DELTA-IT06', password:'delta2025', promo:'Bachelor 2', annee:2 },
+  { id:'STU007', prenom:'Julian', nom:'Jones', code:'DELTA-JJ07', password:'delta2025', promo:'Bachelor 2', annee:2 },
+  { id:'STU008', prenom:'Nikola', nom:'Skoric', code:'DELTA-NS08', password:'delta2025', promo:'Bachelor 2', annee:2 },
+  { id:'STU009', prenom:'Matis', nom:'Chereau', code:'DELTA-MA09', password:'delta2025', promo:'Bachelor 2', annee:2 },
+  { id:'STU010', prenom:'Antoine', nom:'Bourrel', code:'DELTA-AB10', password:'delta2025', promo:'Bachelor 2', annee:2 },
+  { id:'STU011', prenom:'Shahine', nom:'Bazizen', code:'DELTA-SB11', password:'delta2025', promo:'Bachelor 2', annee:2 },
+];
+
+// Grades store: { studentId_moduleId: { note, commentaire } }
+let grades = {};
+try { grades = JSON.parse(localStorage.getItem('delta_grades') || '{}'); } catch(e) {}
+
+let currentModule = null;
+let currentStudent = null;
+let isAdmin = false;
+
+// ================================================================
+// AUTH
+// ================================================================
+function switchMode(mode) {
+  document.getElementById('login-mode-admin').style.display = mode === 'admin' ? '' : 'none';
+  document.getElementById('login-mode-student').style.display = mode === 'student' ? '' : 'none';
+  document.getElementById('login-error').style.display = 'none';
+  document.getElementById('student-error').style.display = 'none';
+}
+
+function doLogin() {
+  const u = document.getElementById('login-user').value.trim();
+  const p = document.getElementById('login-pass').value;
+  if ((u === 'admin' && p === 'delta2025') || (u === 'directeur' && p === 'delta2025')) {
+    isAdmin = true;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('admin-app').style.display = 'block';
+    initAdmin();
+  } else {
+    document.getElementById('login-error').style.display = 'block';
+  }
+}
+
+function doStudentLogin() {
+  const code = document.getElementById('student-code-input').value.trim().toUpperCase();
+  const pass = document.getElementById('student-pass').value;
+  const student = STUDENTS.find(s => s.code === code && s.password === pass);
+  if (student) {
+    currentStudent = student;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('student-app').style.display = 'block';
+    initStudent();
+  } else {
+    document.getElementById('student-error').style.display = 'block';
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    if (document.getElementById('login-mode-admin').style.display !== 'none') doLogin();
+    else doStudentLogin();
+  }
+});
+
+function logout() {
+  document.getElementById('admin-app').style.display = 'none';
+  document.getElementById('student-app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+  document.getElementById('student-code-input').value = '';
+  document.getElementById('student-pass').value = '';
+  currentModule = null; currentStudent = null; isAdmin = false;
+}
+
+// ================================================================
+// ADMIN
+// ================================================================
+function initAdmin() {
+  buildSidebar();
+  renderStudentsTab();
+  renderBulletinsGrid();
+}
+
+const PILIER_COLORS = {
+  'Product': 'pb-product', 'Operations': 'pb-operations',
+  'Growth & Sales': 'pb-growth', 'Data': 'pb-data', 'Other': 'pb-other'
+};
+
+function buildSidebar() {
+  const sidebar = document.getElementById('admin-sidebar');
+  const ues = {};
+  MODULES.forEach(m => {
+    if (!ues[m.ue]) ues[m.ue] = { ueName: m.ueName, pilier: m.pilier, modules: [] };
+    ues[m.ue].modules.push(m);
+  });
+  let html = '';
+  Object.entries(ues).forEach(([ueId, ue]) => {
+    html += `<div class="sidebar-pilier">${ueId} — ${ue.pilier}</div>`;
+    ue.modules.forEach(m => {
+      html += `<div class="sidebar-item" id="si-${m.id}" onclick="selectModule('${m.id}')">
+        <span class="sidebar-dot"></span>
+        <span style="line-height:1.3">${m.nom}</span>
+      </div>`;
+    });
+  });
+  sidebar.innerHTML = html;
+}
+
+function selectModule(moduleId) {
+  currentModule = MODULES.find(m => m.id === moduleId);
+  document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+  document.getElementById('si-' + moduleId)?.classList.add('active');
+  document.getElementById('no-module-msg').style.display = 'none';
+  document.getElementById('mod-stats').style.display = 'grid';
+  document.getElementById('grade-table-wrap').style.display = 'block';
+  document.getElementById('mod-title').textContent = currentModule.nom;
+  document.getElementById('mod-sub').textContent = `${currentModule.id} · ${currentModule.pilier} · ${currentModule.heures}h · ${currentModule.promo === 'B1' ? 'Bachelor 1' : 'Bachelor 2'}`;
+  renderGradeTable();
+  updateModStats();
+}
+
+function getStudentsForModule(m) {
+  return STUDENTS.filter(s => (m.promo === 'B1' && s.annee === 1) || (m.promo === 'B2' && s.annee === 2) || m.promo === 'ALL');
+}
+
+function renderGradeTable() {
+  const tbody = document.getElementById('grade-tbody');
+  const students = getStudentsForModule(currentModule);
+  tbody.innerHTML = students.map(s => {
+    const key = s.id + '_' + currentModule.id;
+    const g = grades[key] || {};
+    const note = g.note !== undefined ? g.note : '';
+    const comment = g.commentaire || '';
+    const mention = getMention(note);
+    const status = note === '' ? '<span style="color:#3a3a5a;font-size:12px;">○ Non saisi</span>'
+      : parseFloat(note) >= 10 ? '<span style="color:#4ade80;font-size:12px;">✓ Validé</span>'
+      : '<span style="color:#f87171;font-size:12px;">⚠ Rattrapage</span>';
+    const mentionHtml = note === '' ? '<span class="badge-empty">—</span>'
+      : `<span class="badge ${getMentionClass(note)}">${mention}</span>`;
+    const initials = (s.prenom[0] + s.nom[0]).toUpperCase();
+    return `<tr>
+      <td><div class="student-cell"><div class="avatar">${initials}</div><strong style="color:var(--text)">${s.prenom} ${s.nom}</strong></div></td>
+      <td><span style="font-size:11px;color:var(--muted)">${s.promo}</span></td>
+      <td><input class="grade-input" type="number" min="0" max="20" step="0.5" value="${note}" id="g-${s.id}" onchange="updateModStats()"></td>
+      <td id="ment-${s.id}">${mentionHtml}</td>
+      <td><textarea class="comment-input" id="c-${s.id}" placeholder="Commentaire...">${comment}</textarea></td>
+      <td id="stat-${s.id}">${status}</td>
+    </tr>`;
+  }).join('');
+
+  // Live update mentions on input
+  students.forEach(s => {
+    const inp = document.getElementById('g-' + s.id);
+    if (inp) inp.addEventListener('input', () => {
+      const v = inp.value;
+      document.getElementById('ment-' + s.id).innerHTML = v === '' ? '<span class="badge-empty">—</span>' : `<span class="badge ${getMentionClass(v)}">${getMention(v)}</span>`;
+      document.getElementById('stat-' + s.id).innerHTML = v === '' ? '<span style="color:#3a3a5a;font-size:12px;">○ Non saisi</span>' : parseFloat(v) >= 10 ? '<span style="color:#4ade80;font-size:12px;">✓ Validé</span>' : '<span style="color:#f87171;font-size:12px;">⚠ Rattrapage</span>';
+      updateModStats();
+    });
+  });
+}
+
+function getMention(note) {
+  if (note === '' || note === undefined || note === null) return '—';
+  const n = parseFloat(note);
+  if (n >= 16) return 'Très bien';
+  if (n >= 14) return 'Bien';
+  if (n >= 12) return 'Assez bien';
+  if (n >= 10) return 'Passable';
+  return 'Insuffisant';
+}
+function getMentionClass(note) {
+  const n = parseFloat(note);
+  if (n >= 12) return 'badge-good';
+  if (n >= 10) return 'badge-mid';
+  return 'badge-low';
+}
+
+function updateModStats() {
+  if (!currentModule) return;
+  const students = getStudentsForModule(currentModule);
+  let filled = 0, sum = 0, pass = 0;
+  students.forEach(s => {
+    const inp = document.getElementById('g-' + s.id);
+    if (inp && inp.value !== '') {
+      filled++;
+      const v = parseFloat(inp.value);
+      sum += v;
+      if (v >= 10) pass++;
+    }
+  });
+  document.getElementById('st-count').innerHTML = `${students.length} <small>inscrits</small>`;
+  document.getElementById('st-filled').innerHTML = `${filled} <small>/ ${students.length}</small>`;
+  document.getElementById('st-avg').innerHTML = filled > 0 ? `${(sum/filled).toFixed(1)} <small>/20</small>` : `— <small>/20</small>`;
+  document.getElementById('st-pass').innerHTML = filled > 0 ? `${Math.round(pass/filled*100)} <small>%</small>` : `— <small>%</small>`;
+}
+
+function saveGrades() {
+  if (!currentModule) return;
+  const students = getStudentsForModule(currentModule);
+  students.forEach(s => {
+    const noteEl = document.getElementById('g-' + s.id);
+    const commEl = document.getElementById('c-' + s.id);
+    const key = s.id + '_' + currentModule.id;
+    if (noteEl) {
+      grades[key] = { note: noteEl.value, commentaire: commEl ? commEl.value : '' };
+    }
+  });
+  localStorage.setItem('delta_grades', JSON.stringify(grades));
+  const t = document.getElementById('toast-saved');
+  t.style.display = 'flex';
+  setTimeout(() => t.style.display = 'none', 2500);
+  renderBulletinsGrid();
+}
+
+function resetGrades() {
+  if (currentModule) renderGradeTable();
+}
+
+function showAdminTab(tab, el) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  if (tab === 'bulletins') renderBulletinsGrid();
+}
+
+function renderStudentsTab() {
+  const tbody = document.getElementById('students-tbody');
+  tbody.innerHTML = STUDENTS.map(s => {
+    const count = MODULES.filter(m => {
+      const key = s.id + '_' + m.id;
+      return grades[key] && grades[key].note !== '';
+    }).length;
+    return `<tr>
+      <td><div class="student-cell"><div class="avatar">${(s.prenom[0]+s.nom[0]).toUpperCase()}</div><strong style="color:var(--text)">${s.prenom} ${s.nom}</strong></div></td>
+      <td style="font-size:12px;color:var(--muted)">Bachelor Entrepreneuriat & Digital</td>
+      <td style="font-size:12px;color:var(--muted)">Bachelor ${s.annee}</td>
+      <td><span class="student-code">${s.code}</span></td>
+      <td><span style="color:var(--muted);font-size:12px;letter-spacing:2px">••••••••</span></td>
+      <td><span style="font-size:12px;color:${count>0?'#4ade80':'var(--muted)'}">${count} / ${MODULES.length}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderBulletinsGrid() {
+  const grid = document.getElementById('bulletins-grid');
+  grid.innerHTML = STUDENTS.map(s => {
+    const { avg, filled } = getStudentAvg(s);
+    const avgDisplay = filled > 0 ? avg.toFixed(1) : null;
+    const mention = filled > 0 ? getMention(avg) : null;
+    return `<div class="ov-card" onclick="downloadBulletinAdmin('${s.id}')">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div class="avatar" style="width:36px;height:36px;font-size:12px;">${(s.prenom[0]+s.nom[0]).toUpperCase()}</div>
+        <div>
+          <div class="ov-name">${s.prenom} ${s.nom}</div>
+          <div class="ov-class">${s.promo} · ${filled}/${MODULES.length} modules</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div class="ov-avg ${avgDisplay ? '' : 'na'}">${avgDisplay ? avgDisplay + '/20' : 'En attente'}</div>
+        ${mention ? `<span class="badge ${getMentionClass(avg)}">${mention}</span>` : ''}
+      </div>
+      <div style="margin-top:10px">
+        <button class="btn-primary" style="font-size:11px;padding:6px 12px;width:100%" onclick="event.stopPropagation();downloadBulletinAdmin('${s.id}')">📄 Télécharger PDF</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function getStudentAvg(student) {
+  let sum = 0, count = 0;
+  MODULES.forEach(m => {
+    const key = student.id + '_' + m.id;
+    if (grades[key] && grades[key].note !== '' && grades[key].note !== undefined) {
+      sum += parseFloat(grades[key].note);
+      count++;
+    }
+  });
+  return { avg: count > 0 ? sum / count : 0, filled: count };
+}
+
+// ================================================================
+// STUDENT
+// ================================================================
+function initStudent() {
+  const s = currentStudent;
+  document.getElementById('stu-name-header').textContent = s.prenom + ' ' + s.nom;
+  document.getElementById('stu-hero-name').textContent = 'Bonjour, ' + s.prenom + ' 👋';
+  document.getElementById('stu-hero-class').textContent = s.promo + ' · Promotion NEXT2027 · Paris';
+  document.getElementById('stu-bulletin-info').textContent = s.promo + ' · Promotion NEXT2027';
+  document.getElementById('stu-bulletin-name').textContent = s.prenom + ' ' + s.nom;
+  renderStudentModules();
+}
+
+function renderStudentModules() {
+  const s = currentStudent;
+  const { avg, filled } = getStudentAvg(s);
+  const pending = MODULES.length - filled;
+  const mention = filled > 0 ? getMention(avg) : '—';
+  document.getElementById('stu-avg-display').textContent = filled > 0 ? avg.toFixed(1) + '/20' : '—';
+  document.getElementById('stu-modules-count').textContent = MODULES.length;
+  document.getElementById('stu-pending').textContent = pending;
+  document.getElementById('stu-mention').textContent = mention;
+  document.getElementById('stu-bulletin-avg').textContent = filled > 0 ? avg.toFixed(1) + '/20' : '—';
+  document.getElementById('stu-bulletin-mention').textContent = mention;
+
+  const grid = document.getElementById('stu-modules-grid');
+  grid.innerHTML = MODULES.map(m => {
+    const key = s.id + '_' + m.id;
+    const g = grades[key] || {};
+    const note = g.note;
+    const hasNote = note !== undefined && note !== '';
+    let cardClass = 'pending';
+    let mentionHtml = '<span class="ment ment-p">En attente</span>';
+    let gradeHtml = '<div class="mod-pending">Note en attente...</div>';
+    if (hasNote) {
+      const n = parseFloat(note);
+      cardClass = n >= 12 ? 'good' : n >= 10 ? 'mid' : 'low';
+      const mc = n >= 12 ? 'ment-g' : n >= 10 ? 'ment-m' : 'ment-l';
+      mentionHtml = `<span class="ment ${mc}">${getMention(n)}</span>`;
+      gradeHtml = `<div class="mod-grade">${note}<span class="denom">/20</span></div>`;
+    }
+    return `<div class="module-card ${cardClass}">
+      <div class="mod-name">${m.nom}</div>
+      <div class="mod-info">${m.id} · ${m.heures}h</div>
+      <div class="mod-bottom">${gradeHtml}${mentionHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+function downloadBulletin() { generatePDF(currentStudent); }
+function downloadBulletinAdmin(studentId) {
+  const s = STUDENTS.find(x => x.id === studentId);
+  if (s) generatePDF(s);
+}
+
+// ================================================================
+// PDF GENERATION
+// ================================================================
+function generatePDF(student) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = 210, M = 20;
+  const contentW = W - M * 2;
+
+  // Outer border
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.5);
+  doc.rect(12, 12, W - 24, 297 - 24);
+
+  // Header band
+  doc.setFillColor(0, 0, 0);
+  doc.rect(12, 12, W - 24, 28, 'F');
+
+  // Delta logo area (white box)
+  doc.setFillColor(255, 255, 255);
+  doc.rect(14, 14, 52, 24, 'F');
+  doc.setFillColor(0, 0, 0);
+  doc.rect(16, 16, 14, 14, 'F');
+  // Delta symbol
+  doc.setFontSize(16);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.text('δ', 20.5, 26);
+  // "delta" text
+  doc.setFontSize(14);
+  doc.setTextColor(0, 0, 0);
+  doc.setFont('helvetica', 'bold');
+  doc.text('delta', 33, 24);
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  doc.text('BUSINESS SCHOOL', 33, 29);
+
+  // Title
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text('BULLETIN SCOLAIRE', 130, 28);
+
+  // Student info
+  let y = 52;
+  doc.setFontSize(10);
+  doc.setTextColor(0);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Nom :', M, y); doc.setFont('helvetica', 'normal'); doc.text(student.nom.toUpperCase(), M + 20, y);
+  y += 7;
+  doc.setFont('helvetica', 'bold');
+  doc.text('Prénom :', M, y); doc.setFont('helvetica', 'normal'); doc.text(student.prenom, M + 20, y);
+  y += 7;
+  doc.setFont('helvetica', 'bold');
+  doc.text('Classe :', M, y); doc.setFont('helvetica', 'normal'); doc.text(student.promo, M + 20, y);
+  y += 7;
+  doc.setFont('helvetica', 'bold');
+  doc.text('Semestre :', M, y); doc.setFont('helvetica', 'normal'); doc.text('S1', M + 20, y);
+  y += 7;
+  doc.setFont('helvetica', 'bold');
+  doc.text('Année scolaire :', M, y); doc.setFont('helvetica', 'normal'); doc.text('2024 / 2025', M + 20, y);
+  y += 10;
+
+  // Table header
+  doc.setFillColor(0, 0, 0);
+  doc.rect(M, y, contentW, 8, 'F');
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text('Pilier', M + 2, y + 5.5);
+  doc.text('Module', M + 35, y + 5.5);
+  doc.text('Moy.', M + 120, y + 5.5);
+  doc.text('Commentaires', M + 135, y + 5.5);
+  y += 8;
+
+  // Table rows
+  let lastUE = '';
+  let rowY = y;
+  const rowH = 11;
+
+  MODULES.forEach((m, i) => {
+    const key = student.id + '_' + m.id;
+    const g = grades[key] || {};
+    const note = (g.note !== undefined && g.note !== '') ? parseFloat(g.note).toFixed(1) : '—';
+    const comment = g.commentaire || '';
+
+    // Alternating row bg
+    if (i % 2 === 0) {
+      doc.setFillColor(248, 248, 245);
+      doc.rect(M, rowY, contentW, rowH, 'F');
+    }
+
+    doc.setDrawColor(220, 220, 215);
+    doc.setLineWidth(0.2);
+    doc.line(M, rowY + rowH, M + contentW, rowY + rowH);
+
+    doc.setFontSize(8);
+    doc.setTextColor(60, 60, 60);
+    doc.setFont('helvetica', 'normal');
+
+    // Pilier (only show when changes)
+    if (m.ue !== lastUE) {
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0);
+      doc.text(m.pilier.substring(0, 12), M + 2, rowY + 7);
+      lastUE = m.ue;
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(60, 60, 60);
+    }
+
+    // Module name (truncated)
+    const nomTrunc = m.nom.length > 40 ? m.nom.substring(0, 38) + '…' : m.nom;
+    doc.text(nomTrunc, M + 35, rowY + 7);
+
+    // Note
+    if (note !== '—') {
+      const nNum = parseFloat(note);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(nNum >= 10 ? 15 : 180, nNum >= 10 ? 120 : 30, nNum >= 10 ? 50 : 30);
+    } else {
+      doc.setTextColor(150, 150, 150);
+    }
+    doc.text(note, M + 122, rowY + 7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(60, 60, 60);
+
+    // Comment
+    if (comment) {
+      const commTrunc = comment.length > 35 ? comment.substring(0, 33) + '…' : comment;
+      doc.text(commTrunc, M + 135, rowY + 7);
+    }
+
+    rowY += rowH;
+  });
+
+  // Class avg line
+  doc.setDrawColor(180, 180, 175);
+  doc.setLineWidth(0.5);
+  doc.line(M, rowY + 2, M + contentW, rowY + 2);
+  rowY += 8;
+
+  // General comment box
+  const commentBoxY = rowY + 4;
+  doc.setFillColor(0, 0, 0);
+  doc.rect(M, commentBoxY, contentW, 8, 'F');
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text('Commentaire général :', M + 2, commentBoxY + 5.5);
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.3);
+  doc.rect(M, commentBoxY + 8, contentW, 22);
+  // rowY after comment box
+  rowY = commentBoxY + 32;
+
+  // Bottom info
+  const { avg, filled } = getStudentAvg(student);
+  rowY += 8;
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(0);
+  doc.text('Moyenne classe :', M, rowY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(filled > 0 ? avg.toFixed(2) + ' / 20' : '—', M + 35, rowY);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Absences :', M + 100, rowY);
+
+  // Signature
+  rowY += 14;
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(8);
+  doc.setTextColor(60);
+  doc.text('Signature du directeur de l\'établissement', M + 90, rowY);
+  rowY += 18;
+
+  // Footer
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(80);
+  doc.text('Delta Business School - Etablissement d\'enseignement supérieur privé - UAI : 0756577S', W / 2, 270, { align: 'center' });
+  doc.text('70 rue de Meaux, 75019 PARIS', W / 2, 275, { align: 'center' });
+
+  doc.save(`Bulletin_${student.nom}_${student.prenom}_S1_2024-2025.pdf`);
+}
+</script>
+</body>
+</html>
