@@ -1399,10 +1399,11 @@ tbody tr:hover td { background: var(--blanc); }
       <div id="tab-dashboard" class="tab-content">
         <div class="page-title">Dashboard</div>
 
-        <!-- Évaluations / Absences sub-tabs -->
+        <!-- Évaluations / Absences / Alertes sub-tabs -->
         <div style="display:flex;gap:0;margin-bottom:24px;border-bottom:2px solid var(--blanc2)">
           <button id="dash-sub-eval" onclick="showDashSub('eval')" style="padding:8px 20px;font-size:13px;font-weight:600;background:none;border:none;border-bottom:3px solid #000;margin-bottom:-2px;cursor:pointer;color:#000">Évaluations</button>
           <button id="dash-sub-abs" onclick="showDashSub('abs')" style="padding:8px 20px;font-size:13px;font-weight:600;background:none;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;cursor:pointer;color:var(--gris-text)">Absences</button>
+          <button id="dash-sub-alertes" onclick="showDashSub('alertes')" style="padding:8px 20px;font-size:13px;font-weight:600;background:none;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;cursor:pointer;color:var(--gris-text);display:flex;align-items:center;gap:6px">Alertes <span id="alertes-badge" style="display:none;background:#C03030;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px">0</span></button>
         </div>
 
         <!-- ÉVALUATIONS panel -->
@@ -1483,6 +1484,19 @@ tbody tr:hover td { background: var(--blanc); }
             </div>
             <div id="dash-abs-detail-content"></div>
           </div>
+        </div>
+
+        <!-- ALERTES panel -->
+        <div id="dash-panel-alertes" style="display:none">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+            <div class="page-sub" style="margin-bottom:0">Étudiants en situation à risque · Promotion 2025/2026</div>
+          </div>
+          <div style="background:#FFF8E7;border:1px solid #F0D080;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:12px;color:#8A6800">
+            <strong>Critères de déclenchement&nbsp;:</strong>
+            au moins un <strong>Pilier</strong> (Bachelor 1 et 2) ou <strong>Bloc</strong> (Bachelor 3, MCOM 1, MCOM 2) en rattrapage,
+            ou un cumul d'<strong>Absences Non Justifiées (ANJ) &gt; 28&nbsp;h</strong>.
+          </div>
+          <div id="dash-alertes-content"></div>
         </div>
       </div>
       <div id="tab-absences" class="tab-content">
@@ -3340,7 +3354,7 @@ async function showAdminTab(tab, el) {
   if (adminSidebar) adminSidebar.style.display = tab === 'notes' ? '' : 'none';
   if (absSidebar) absSidebar.style.display = tab === 'absences' ? '' : 'none';
   if (tab==='bulletins') renderBulletinsGrid();
-  if (tab==='dashboard') renderDashboard();
+  if (tab==='dashboard') { renderDashboard(); updateAlertesBadge(); }
   if (tab==='ea') renderEAProjects();
   if (tab==='absences') await initAbsencesTab();
   if (tab==='etudiants') { renderAdminsTable(); renderAssistantsTable(); renderMAAdminList(); }
@@ -4510,18 +4524,28 @@ function downloadBulletin() { generatePDF(currentStudent); }
 function showDashSub(sub) {
   const evalPanel = document.getElementById('dash-panel-eval');
   const absPanel = document.getElementById('dash-panel-abs');
+  const alertesPanel = document.getElementById('dash-panel-alertes');
   const evalBtn = document.getElementById('dash-sub-eval');
   const absBtn = document.getElementById('dash-sub-abs');
+  const alertesBtn = document.getElementById('dash-sub-alertes');
+  const setActive = (btn) => { btn.style.borderBottomColor = '#000'; btn.style.color = '#000'; };
+  const setInactive = (btn) => { btn.style.borderBottomColor = 'transparent'; btn.style.color = 'var(--gris-text)'; };
+
+  evalPanel.style.display = 'none';
+  absPanel.style.display = 'none';
+  alertesPanel.style.display = 'none';
+  setInactive(evalBtn); setInactive(absBtn); setInactive(alertesBtn);
+
   if (sub === 'eval') {
     evalPanel.style.display = '';
-    absPanel.style.display = 'none';
-    evalBtn.style.borderBottomColor = '#000'; evalBtn.style.color = '#000';
-    absBtn.style.borderBottomColor = 'transparent'; absBtn.style.color = 'var(--gris-text)';
+    setActive(evalBtn);
+  } else if (sub === 'alertes') {
+    alertesPanel.style.display = '';
+    setActive(alertesBtn);
+    renderAlertes();
   } else {
-    evalPanel.style.display = 'none';
     absPanel.style.display = '';
-    evalBtn.style.borderBottomColor = 'transparent'; evalBtn.style.color = 'var(--gris-text)';
-    absBtn.style.borderBottomColor = '#000'; absBtn.style.color = '#000';
+    setActive(absBtn);
     // Default to first promo that has sessions
     const defaultCls = ['mcom1','b3','b2','b1','mcom2'].find(c => {
       const promoMap = {b1:'B1',b2:'B2',b3:'B3',mcom1:'MCOM1',mcom2:'MCOM2'};
@@ -4534,6 +4558,194 @@ function showDashSub(sub) {
     if (defBtn) defBtn.classList.add('active');
     renderAbsDashboard(defaultCls);
   }
+}
+
+// === ALERTES ===
+const ANJ_THRESHOLD_HOURS = 28;
+
+function computeStudentAlerts(s) {
+  const isMCOM = s.annee === 4 || s.annee === 5;
+  const isB3 = s.annee === 3;
+  const piliers = isMCOM
+    ? ['BLOC 1','BLOC 2','BLOC 3','BLOC 4']
+    : isB3
+      ? ['BLOC 1','BLOC 2','BLOC 3','TRANSVERSE']
+      : ['Product','Operations','Growth & Sales','Data','Other'];
+  const pilierLabels = (isMCOM || isB3)
+    ? {'BLOC 1':'Bloc 1','BLOC 2':'Bloc 2','BLOC 3':'Bloc 3','BLOC 4':'Bloc 4','TRANSVERSE':'Transverse'}
+    : {'Product':'Product','Operations':'Opérations','Growth & Sales':'Growth & Sales','Data':'Data & IA','Other':'Pro & Perso'};
+
+  const studentMods = getModulesForStudent(s);
+  const rattrapages = [];
+  piliers.forEach(p => {
+    const hasMods = studentMods.some(m => m.pilier === p);
+    if (!hasMods) return;
+    const pa = getPilierAvg(s.id, p);
+    if (!pa) return;
+    let isRattrapage = false;
+    if (pa.blocStatus === 'rattrapage') isRattrapage = true;
+    else if (pa.blocStatus === null && pa.count > 0 && pa.avg < 10) isRattrapage = true;
+    if (isRattrapage) rattrapages.push({ key: p, label: pilierLabels[p] || p, avg: pa.avg });
+  });
+
+  // ANJ hours across all student modules
+  let anjHours = 0;
+  studentMods.forEach(m => {
+    (attendanceSessions[m.id] || []).forEach(sess => {
+      const key = m.id + '_' + sess.session_num + '_' + s.id;
+      if (attendanceData[key]?.status === 'anj') anjHours += sess.session_hours || 0;
+    });
+  });
+
+  return { rattrapages, anjHours, anjOver: anjHours > ANJ_THRESHOLD_HOURS };
+}
+
+function updateAlertesBadge() {
+  const badge = document.getElementById('alertes-badge');
+  if (!badge) return;
+  let count = 0;
+  REAL_STUDENTS.forEach(s => {
+    const a = computeStudentAlerts(s);
+    if (a.rattrapages.length > 0 || a.anjOver) count++;
+  });
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function renderAlertes() {
+  const container = document.getElementById('dash-alertes-content');
+  if (!container) return;
+
+  const promoLabels = {1:'Bachelor 1', 2:'Bachelor 2', 3:'Bachelor 3', 4:'MCOM 1', 5:'MCOM 2'};
+  const promoColors = {1:'#C895EF', 2:'#F89191', 3:'#BBC1B1', 4:'#000', 5:'#7B3FA0'};
+  const promoCls    = {1:'b1', 2:'b2', 3:'b3', 4:'mcom1', 5:'mcom2'};
+
+  const alerted = [];
+  REAL_STUDENTS.forEach(s => {
+    const a = computeStudentAlerts(s);
+    if (a.rattrapages.length > 0 || a.anjOver) alerted.push({ s, ...a });
+  });
+
+  // Sort according to current sort state (default: most severe first)
+  const srt = window._alertesSort || { col: 'severity', dir: -1 };
+  const actionsCount = (x) => (x.rattrapages.length > 0 ? 1 : 0) + ((x.anjOver || x.anjHours > 0) ? 1 : 0);
+  alerted.sort((a, b) => {
+    let cmp = 0;
+    switch (srt.col) {
+      case 'name':       cmp = a.s.nom.localeCompare(b.s.nom); break;
+      case 'promo':      cmp = a.s.annee - b.s.annee; break;
+      case 'rattrapage': cmp = a.rattrapages.length - b.rattrapages.length; break;
+      case 'anj':        cmp = a.anjHours - b.anjHours; break;
+      case 'actions':    cmp = actionsCount(a) - actionsCount(b); break;
+      default: // severity
+        cmp = (a.rattrapages.length - b.rattrapages.length) || (a.anjHours - b.anjHours);
+    }
+    if (cmp === 0) cmp = a.s.nom.localeCompare(b.s.nom); // tie-break by name asc
+    return cmp * srt.dir;
+  });
+
+  // KPIs
+  const totalAlerted = alerted.length;
+  const totalRattrapage = alerted.filter(x => x.rattrapages.length > 0).length;
+  const totalANJ = alerted.filter(x => x.anjOver).length;
+  const totalBoth = alerted.filter(x => x.rattrapages.length > 0 && x.anjOver).length;
+
+  let html = '<div class="dash-summary-row" style="margin-bottom:24px">';
+  html += `<div class="dash-kpi"><div class="dash-kpi-val" style="color:#C03030">${totalAlerted}</div><div class="dash-kpi-lbl">Étudiants en alerte</div></div>`;
+  html += `<div class="dash-kpi"><div class="dash-kpi-val" style="color:#C03030">${totalRattrapage}</div><div class="dash-kpi-lbl">Avec rattrapage</div></div>`;
+  html += `<div class="dash-kpi"><div class="dash-kpi-val" style="color:#C03030">${totalANJ}</div><div class="dash-kpi-lbl">ANJ &gt; ${ANJ_THRESHOLD_HOURS}h</div></div>`;
+  html += `<div class="dash-kpi"><div class="dash-kpi-val" style="color:#C03030">${totalBoth}</div><div class="dash-kpi-lbl">Cumul des deux</div></div>`;
+  html += '</div>';
+
+  if (alerted.length === 0) {
+    html += `<div style="background:#DCFCE7;border:1px solid #8AD9A8;border-radius:12px;padding:24px;text-align:center;color:#15803D;font-weight:600;font-size:14px">
+      ✓ Aucun étudiant en situation d'alerte pour le moment
+    </div>`;
+    container.innerHTML = html;
+    return;
+  }
+
+  const arrow = (col) => srt.col === col ? (srt.dir === 1 ? ' ↑' : ' ↓') : ' ⇅';
+  const thStyle = 'cursor:pointer;user-select:none';
+  html += '<div class="table-wrap"><table class="dash-table"><thead><tr>';
+  html += `<th onclick="sortAlertes('name')" style="${thStyle}">Étudiant${arrow('name')}</th>`;
+  html += `<th onclick="sortAlertes('promo')" style="${thStyle}">Promotion${arrow('promo')}</th>`;
+  html += `<th onclick="sortAlertes('rattrapage')" style="color:#C03030;${thStyle}">Pilier(s) / Bloc(s) en rattrapage${arrow('rattrapage')}</th>`;
+  html += `<th onclick="sortAlertes('anj')" style="color:#C03030;${thStyle}">ANJ cumulées${arrow('anj')}</th>`;
+  html += `<th onclick="sortAlertes('actions')" style="${thStyle}">Actions${arrow('actions')}</th>`;
+  html += '</tr></thead><tbody>';
+
+  const avatarColors = ['#C895EF','#F89191','#BBC1B1'];
+
+  alerted.forEach(({ s, rattrapages, anjHours, anjOver }, idx) => {
+    const initials = (s.prenom[0] + s.nom[0]).toUpperCase();
+    const avatarC = avatarColors[idx % avatarColors.length];
+    const promoLbl = promoLabels[s.annee] || s.promo;
+    const promoCol = promoColors[s.annee] || '#888';
+    const cls = promoCls[s.annee];
+
+    const ratHtml = rattrapages.length > 0
+      ? rattrapages.map(r => `<span class="pilier-status rattrapage" style="margin:1px 3px 1px 0;display:inline-block">↻ ${r.label} <strong>${r.avg.toFixed(1)}</strong></span>`).join('')
+      : '<span style="color:#c0c0c0">—</span>';
+
+    const anjHtml = anjOver
+      ? `<span style="background:#FEE2E2;color:#C03030;font-weight:700;padding:3px 9px;border-radius:10px;font-size:12px">⚠ ${anjHours.toFixed(1)}h</span>`
+      : (anjHours > 0
+          ? `<span style="color:#92620A;font-size:12px">${anjHours.toFixed(1)}h</span>`
+          : '<span style="color:#c0c0c0">—</span>');
+
+    const actions = [];
+    if (rattrapages.length > 0) {
+      actions.push(`<button onclick="showBlocDetail('${s.id}','${cls}')" style="background:none;border:1.5px solid var(--blanc2);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;color:var(--noir);font-weight:600">📊 Notes</button>`);
+    }
+    if (anjOver || anjHours > 0) {
+      actions.push(`<button onclick="showAlerteAbsDetail('${s.id}','${cls}')" style="background:none;border:1.5px solid var(--blanc2);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;color:var(--noir);font-weight:600">📅 Absences</button>`);
+    }
+
+    html += `<tr>
+      <td><div class="student-cell">
+        <div class="avatar" style="background:${avatarC}">${initials}</div>
+        <strong style="color:var(--noir)">${s.prenom} ${s.nom}</strong>
+      </div></td>
+      <td><span style="background:${promoCol}22;color:${promoCol};font-size:11px;font-weight:700;padding:3px 9px;border-radius:10px">${promoLbl}</span></td>
+      <td>${ratHtml}</td>
+      <td>${anjHtml}</td>
+      <td><div style="display:flex;gap:6px;flex-wrap:wrap">${actions.join('')}</div></td>
+    </tr>`;
+  });
+
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+}
+
+function sortAlertes(col) {
+  const cur = window._alertesSort || { col: 'severity', dir: -1 };
+  // Default direction per column type
+  const numericDesc = ['rattrapage','anj','actions','promo','severity'];
+  const defaultDir = numericDesc.includes(col) ? -1 : 1;
+  if (cur.col === col) {
+    window._alertesSort = { col, dir: cur.dir === 1 ? -1 : 1 };
+  } else {
+    window._alertesSort = { col, dir: defaultDir };
+  }
+  renderAlertes();
+}
+
+function showAlerteAbsDetail(studentId, cls) {
+  // Switch to Absences sub-tab and open detail
+  showDashSub('abs');
+  // After showDashSub renders the table, activate the right class tab and open detail
+  setTimeout(() => {
+    document.querySelectorAll('[id^="act-"]').forEach(t => t.classList.remove('active'));
+    const btn = document.getElementById('act-' + cls);
+    if (btn) btn.classList.add('active');
+    renderAbsDashboard(cls);
+    showAbsDetail(studentId, cls);
+  }, 0);
 }
 
 function showAbsClassTab(cls, el) {
