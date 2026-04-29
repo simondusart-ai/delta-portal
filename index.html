@@ -4643,7 +4643,7 @@ function renderAlertes() {
 
   // Sort according to current sort state (default: most severe first)
   const srt = window._alertesSort || { col: 'severity', dir: -1 };
-  const actionsCount = (x) => (x.rattrapages.length > 0 ? 1 : 0) + ((x.anjOver || x.anjHours > 0) ? 1 : 0);
+  const actionsCount = (x) => (x.rattrapages.length > 0 ? 1 : 0) + (x.anjOver ? 1 : 0);
   alerted.sort((a, b) => {
     let cmp = 0;
     switch (srt.col) {
@@ -4706,14 +4706,14 @@ function renderAlertes() {
     const anjHtml = anjOver
       ? `<span style="background:#FEE2E2;color:#C03030;font-weight:700;padding:3px 9px;border-radius:10px;font-size:12px">⚠ ${anjHours.toFixed(1)}h</span>`
       : (anjHours > 0
-          ? `<span style="color:#92620A;font-size:12px">${anjHours.toFixed(1)}h</span>`
+          ? `<span style="color:#9090a0;font-size:12px" title="Sous le seuil d'alerte (${ANJ_THRESHOLD_HOURS}h)">${anjHours.toFixed(1)}h</span>`
           : '<span style="color:#c0c0c0">—</span>');
 
     const actions = [];
     if (rattrapages.length > 0) {
       actions.push(`<button onclick="showBlocDetail('${s.id}','${cls}')" style="background:none;border:1.5px solid var(--blanc2);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;color:var(--noir);font-weight:600">📊 Notes</button>`);
     }
-    if (anjOver || anjHours > 0) {
+    if (anjOver) {
       actions.push(`<button onclick="showAlerteAbsDetail('${s.id}','${cls}')" style="background:none;border:1.5px solid var(--blanc2);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;color:var(--noir);font-weight:600">📅 Absences</button>`);
     }
 
