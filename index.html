@@ -2461,6 +2461,9 @@ function renderJustificatifs() {
     const studentName = student ? student.prenom + ' ' + student.nom : j.student_id;
     const moduleName = module ? module.nom : j.module_id;
     const submittedDate = new Date(j.submitted_at).toLocaleDateString('fr-FR');
+    const session = (attendanceSessions[j.module_id] || []).find(s => s.session_num === j.session_num);
+    const absenceDateDisp = session?.session_date ? formatDateFR(session.session_date) : '—';
+    const sessionHoursDisp = session?.session_hours ? session.session_hours + 'h' : '—';
     const isImage = j.file_name.match(/\.(jpg|jpeg)$/i);
     const statusColor = j.status === 'pending' ? '#92620A' : j.status === 'approved' ? '#2D7A4A' : '#C03030';
     const statusBg = j.status === 'pending' ? '#FEF3C7' : j.status === 'approved' ? '#DCFCE7' : '#FEE2E2';
@@ -2474,8 +2477,16 @@ function renderJustificatifs() {
             <div style="font-size:14px;font-weight:700;color:#000">${studentName}</div>
             <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${statusBg};color:${statusColor}">${statusLabel}</span>
           </div>
-          <div style="font-size:13px;color:#444;margin-bottom:2px">${moduleName}</div>
-          <div style="font-size:12px;color:#9090a0">Session ${String(j.session_num).padStart(2,'0')} · Déposé le ${submittedDate}</div>
+          <div style="background:#F8F8F6;border:1px solid #E8E8E8;border-radius:10px;padding:10px 12px;margin:6px 0 10px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9090a0;margin-bottom:6px">Absence concernée</div>
+            <div style="font-size:13px;color:#000;font-weight:600;margin-bottom:4px">${moduleName}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:#444">
+              <span>📅 <strong style="color:#000">${absenceDateDisp}</strong></span>
+              <span>⏱ <strong style="color:#000">${sessionHoursDisp}</strong></span>
+              <span style="color:#9090a0">Session ${String(j.session_num).padStart(2,'0')}</span>
+            </div>
+          </div>
+          <div style="font-size:12px;color:#9090a0">Justificatif déposé le ${submittedDate}</div>
           ${rejectionNote}
           <div style="margin-top:10px">
             <a href="${j.file_url}" target="_blank" style="font-size:12px;color:#7B3FA0;font-weight:600;text-decoration:none">
