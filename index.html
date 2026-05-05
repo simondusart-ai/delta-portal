@@ -2591,6 +2591,58 @@ async function adminSetAttendance(studentId, moduleId, sessionNum, status) {
   }
 }
 
+async function adminJustifyAbsence(input, studentId, moduleId, sessionNum, cls) {
+  const file = input.files[0];
+  if (!file) return;
+  const maxSize = 5 * 1024 * 1024;
+  if (file.size > maxSize) { alert('Fichier trop volumineux (max 5 Mo)'); input.value=''; return; }
+
+  showLoader('Envoi du justificatif…');
+  const ext = file.name.split('.').pop();
+  const path = `justificatifs/${studentId}_${moduleId}_session${String(sessionNum).padStart(2,'0')}_${Date.now()}.${ext}`;
+  const uploadR = await fetch(SB_URL + '/storage/v1/object/grilles/' + path, {
+    method: 'POST',
+    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY,
+      'Content-Type': file.type, 'x-upsert': 'true' },
+    body: file
+  });
+  if (!uploadR.ok) { hideLoader(); alert("Erreur lors de l'envoi du fichier."); input.value=''; return; }
+  const fileUrl = SB_URL + '/storage/v1/object/public/grilles/' + path;
+
+  // Insert justificatif as already approved (deposited by admin)
+  const r = await fetch(SB_URL + '/rest/v1/justificatifs', {
+    method: 'POST',
+    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY,
+      'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+    body: JSON.stringify({
+      student_id: studentId, module_id: moduleId, session_num: sessionNum,
+      file_url: fileUrl, file_name: file.name, status: 'approved',
+      reviewed_at: new Date().toISOString()
+    })
+  });
+  if (!r.ok) { hideLoader(); alert("Erreur lors de l'enregistrement du justificatif."); input.value=''; return; }
+  const [created] = await r.json();
+
+  // Switch attendance ANJ → AJ
+  await adminSetAttendance(studentId, moduleId, sessionNum, 'aj');
+
+  // Refresh data caches so the view picks up the changes
+  if (Array.isArray(justificatifsData)) justificatifsData.unshift(created);
+  studentJustificatifs[moduleId + '_' + sessionNum + '_' + studentId] = created;
+
+  hideLoader();
+  showSuccess('✓ Absence justifiée (AJ) — justificatif déposé');
+  input.value = '';
+
+  // Re-render the absence detail panel and the dashboard table
+  if (cls) {
+    renderAbsDashboard(cls);
+    showAbsDetail(studentId, cls);
+  }
+  updateAlertesBadge();
+  updateJustifBadge();
+}
+
 async function uploadJustificatif(input, studentId, moduleId, sessionNum) {
   const file = input.files[0];
   if (!file) return;
@@ -3365,7 +3417,7 @@ async function showAdminTab(tab, el) {
   if (adminSidebar) adminSidebar.style.display = tab === 'notes' ? '' : 'none';
   if (absSidebar) absSidebar.style.display = tab === 'absences' ? '' : 'none';
   if (tab==='bulletins') renderBulletinsGrid();
-  if (tab==='dashboard') { renderDashboard(); updateAlertesBadge(); }
+  if (tab==='dashboard') { loadJustificatifs(); renderDashboard(); updateAlertesBadge(); }
   if (tab==='ea') renderEAProjects();
   if (tab==='absences') await initAbsencesTab();
   if (tab==='etudiants') { renderAdminsTable(); renderAssistantsTable(); renderMAAdminList(); }
@@ -5135,6 +5187,7 @@ function showAbsDetail(studentId, cls) {
         rows.push({
           sessionNum: sess.session_num,
           date: sess.session_date,
+          moduleId: m.id,
           modNom: m.nom,
           pilier: m.pilier,
           status,
@@ -5181,6 +5234,7 @@ function showAbsDetail(studentId, cls) {
       <th>Pilier / Bloc</th>
       <th>Type</th>
       <th>Heures</th>
+      <th>Action</th>
     </tr></thead><tbody>`;
 
     rows.forEach(r => {
@@ -5188,6 +5242,34 @@ function showAbsDetail(studentId, cls) {
       const typeLabel = r.status === 'aj'
         ? '<span class="dash-badge aj">AJ</span>'
         : '<span class="dash-badge anj">ANJ</span>';
+      let actionCell;
+      if (r.status === 'anj') {
+        const inputId = `admin-justif-${s.id}-${r.moduleId}-${r.sessionNum}`;
+        actionCell = `
+          <input type="file" id="${inputId}" accept=".pdf,.jpg,.jpeg,.png" style="display:none"
+            onchange="adminJustifyAbsence(this,'${s.id}','${r.moduleId}',${r.sessionNum},'${cls}')">
+          <button onclick="document.getElementById('${inputId}').click()"
+            style="background:#FEF3C7;color:#92620A;border:1.5px solid #92620A;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap"
+            title="Déposer un justificatif et passer cette absence en AJ">
+            📎 Justifier (AJ)
+          </button>`;
+      } else {
+        // AJ: try to find the attached justificatif (pending or approved)
+        const justif = (justificatifsData || []).find(j =>
+          j.student_id === s.id && j.module_id === r.moduleId && j.session_num === r.sessionNum
+          && j.status !== 'rejected'
+        );
+        if (justif) {
+          const isImg = /\.(jpg|jpeg|png)$/i.test(justif.file_name || '');
+          actionCell = `<button onclick="window.open('${justif.file_url}','_blank')"
+            style="background:#fff;color:#7B3FA0;border:1.5px solid #7B3FA0;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap"
+            title="Ouvrir le justificatif dans un nouvel onglet">
+            ${isImg ? '🖼️' : '📄'} Voir justificatif
+          </button>`;
+        } else {
+          actionCell = '<span style="color:#c0c0c0;font-size:11px" title="Aucun justificatif déposé">—</span>';
+        }
+      }
       h += `<tr>
         <td style="font-weight:600">S${String(r.sessionNum).padStart(2,'0')}</td>
         <td style="font-size:12px">${dateDisp}</td>
@@ -5195,6 +5277,7 @@ function showAbsDetail(studentId, cls) {
         <td style="font-size:11px;color:var(--gris-text)">${r.pilier}</td>
         <td>${typeLabel}</td>
         <td style="font-weight:600;color:${r.status==='aj'?'#92620A':'#C03030'}">${r.hours > 0 ? r.hours+'h' : '—'}</td>
+        <td>${actionCell}</td>
       </tr>`;
     });
 
