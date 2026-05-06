@@ -7385,14 +7385,21 @@ function renderAbsTable() {
   h += '<th style="min-width:160px">Étudiant</th>';
   sessions.forEach((s,i) => {
     const dateStr = formatDateShortFR(s.session_date);
-    const hoursStr = s.session_hours ? s.session_hours+'h' : '—h';
-    h += `<th style="text-align:center;min-width:120px">
-      <div style="font-weight:700">Session ${String(s.session_num).padStart(2,'0')}</div>
-      <div style="font-size:11px;color:#E58585;font-weight:600;margin-top:2px">${dateStr}</div>
-      <div style="display:flex;justify-content:center;gap:4px;margin-top:3px">
-        <button onclick="editAbsSessionDate(${s.session_num})" style="background:none;border:none;color:rgba(255,255,255,0.6);font-size:10px;cursor:pointer;padding:0">✎ date</button>
-        <button onclick="editAbsSessionHours(${s.session_num})" style="background:none;border:none;color:rgba(255,255,255,0.5);font-size:10px;cursor:pointer;padding:0">${hoursStr}</button>
-      </div>
+    const hoursStr = s.session_hours ? s.session_hours + 'h' : '—';
+    const rowBtnStyle = 'display:flex;justify-content:center;align-items:center;gap:4px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:4px;width:100%;font:inherit;color:inherit';
+    h += `<th style="text-align:center;min-width:130px;padding:6px">
+      <button onclick="editAbsSessionNum(${s.session_num})" title="Cliquer pour modifier le n°" style="${rowBtnStyle}">
+        <span style="font-weight:700;color:#000">Session ${String(s.session_num).padStart(2,'0')}</span>
+        <span style="color:#9090a0;font-size:10px">✎</span>
+      </button>
+      <button onclick="editAbsSessionDate(${s.session_num})" title="Cliquer pour modifier la date" style="${rowBtnStyle};margin-top:2px">
+        <span style="font-size:11px;color:#C04040;font-weight:600">📅 ${dateStr}</span>
+        <span style="color:#9090a0;font-size:10px">✎</span>
+      </button>
+      <button onclick="editAbsSessionHours(${s.session_num})" title="Cliquer pour modifier la durée" style="${rowBtnStyle};margin-top:2px">
+        <span style="font-size:11px;color:#92620A;font-weight:600">⏱ ${hoursStr}</span>
+        <span style="color:#9090a0;font-size:10px">✎</span>
+      </button>
     </th>`;
   });
   // (emargement row added below table)
@@ -7548,6 +7555,78 @@ async function deleteAllSessions() {
   attendanceSessions[m.id] = [];
   renderAbsTable();
   showSuccess('Toutes les sessions et présences supprimées.');
+}
+
+async function editAbsSessionNum(oldNum) {
+  if (!currentAbsModule) return;
+  const m = currentAbsModule;
+  const sessions = attendanceSessions[m.id] || [];
+  const sess = sessions.find(s => s.session_num === oldNum);
+  if (!sess) return;
+
+  const input = prompt(`Nouveau n° pour la session ${String(oldNum).padStart(2,'0')} :`, String(oldNum));
+  if (input === null) return;
+  const newNum = parseInt(input, 10);
+  if (isNaN(newNum) || newNum <= 0) { showError('Numéro invalide'); return; }
+  if (newNum === oldNum) return;
+
+  // Conflict check : empêcher de renommer vers un n° déjà utilisé
+  if (sessions.some(s => s.session_num === newNum)) {
+    showError(`La session n°${String(newNum).padStart(2,'0')} existe déjà sur ce module`);
+    return;
+  }
+
+  showLoader('Renommage de la session…');
+  try {
+    // 1. Update attendance_sessions row (single row)
+    const r1 = await fetch(SB_URL + '/rest/v1/attendance_sessions'
+      + '?module_id=eq.' + encodeURIComponent(m.id)
+      + '&session_num=eq.' + oldNum, {
+      method: 'PATCH',
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY,
+        'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ session_num: newNum })
+    });
+    if (!r1.ok) {
+      hideLoader();
+      showError('Erreur lors de la mise à jour de la session');
+      return;
+    }
+
+    // 2. Cascade : mettre à jour les enregistrements attendance liés
+    const r2 = await fetch(SB_URL + '/rest/v1/attendance'
+      + '?module_id=eq.' + encodeURIComponent(m.id)
+      + '&session_num=eq.' + oldNum, {
+      method: 'PATCH',
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY,
+        'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ session_num: newNum })
+    });
+    if (!r2.ok) {
+      hideLoader();
+      showError('Session renommée mais erreur sur les présences — recharge la page');
+      return;
+    }
+
+    // 3. Update local caches
+    sess.session_num = newNum;
+    Object.keys(attendanceData).forEach(k => {
+      const expected = m.id + '_' + oldNum + '_';
+      if (k.startsWith(expected)) {
+        const studentId = k.substring(expected.length);
+        const newKey = m.id + '_' + newNum + '_' + studentId;
+        attendanceData[newKey] = attendanceData[k];
+        delete attendanceData[k];
+      }
+    });
+
+    hideLoader();
+    renderAbsTable();
+    showSuccess('N° de session mis à jour');
+  } catch (e) {
+    hideLoader();
+    showError('Erreur : ' + e.message);
+  }
 }
 
 async function editAbsSessionDate(sessionNum) {
