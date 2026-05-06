@@ -1213,6 +1213,7 @@ tbody tr:hover td { background: var(--blanc); }
     <div class="nav-tab" onclick="showAdminTab('absences',this)">Absences</div>
     <div class="nav-tab" id="nav-tab-justificatifs" onclick="showAdminTab('justificatifs',this)">Justificatifs <span id="justif-badge" style="display:none;background:#C03030;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">0</span></div>
     <div class="nav-tab" onclick="showAdminTab('bulletins',this)">Bulletins</div>
+    <div class="nav-tab" onclick="showAdminTab('planning',this)">Planning</div>
     <div class="nav-tab" onclick="showAdminTab('etudiants',this)">Accès</div>
   </div>
   <div class="app-body">
@@ -1498,6 +1499,23 @@ tbody tr:hover td { background: var(--blanc); }
           </div>
           <div id="dash-alertes-content"></div>
         </div>
+      </div>
+      <div id="tab-planning" class="tab-content">
+        <div class="page-title">Planning Airtable</div>
+        <div class="page-sub" style="margin-bottom:20px">Calendrier synchronisé avec la base Airtable · Vue par promotion</div>
+
+        <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+          <button class="class-tab active" id="plan-b1"     onclick="showPlanningClassTab('B1',this)">Bachelor 1</button>
+          <button class="class-tab"        id="plan-b2"     onclick="showPlanningClassTab('B2',this)">Bachelor 2</button>
+          <button class="class-tab"        id="plan-b3"     onclick="showPlanningClassTab('B3',this)">Bachelor 3</button>
+          <button class="class-tab"        id="plan-mcom1"  onclick="showPlanningClassTab('MCOM1',this)">MCOM 1</button>
+          <button class="class-tab"        id="plan-mcom2"  onclick="showPlanningClassTab('MCOM2',this)">MCOM 2</button>
+          <button onclick="loadAirtablePlanning(currentPlanningPromo, true)"
+            style="margin-left:auto;background:#fff;color:var(--noir);border:1.5px solid var(--blanc2);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer"
+            title="Recharger depuis Airtable">↻ Rafraîchir</button>
+        </div>
+
+        <div id="planning-content"></div>
       </div>
       <div id="tab-absences" class="tab-content">
         <div id="absences-content">
@@ -1876,12 +1894,13 @@ async function loadAllGrades() {
 }
 
 // ===== DATA =====
-const MODULES = [
+let MODULES = [
   {id:'M1.1',ue:'UE1',ueName:"Architecture du produit",pilier:'Product',nom:'Architecture Web & relations développeurs',heures:24,promo:'B1'},
   {id:'M1.2',ue:'UE1',ueName:"Architecture du produit",pilier:'Product',nom:'Introduction au Product Management',heures:25,promo:'B1'},
   {id:'M1.3',ue:'UE1',ueName:"Architecture du produit",pilier:'Product',nom:'Design Thinking',heures:15,promo:'B1'},
   {id:'M1.4',ue:'UE1',ueName:"Architecture du produit",pilier:'Product',nom:'Ergonomie, UX & UI Design',heures:21,promo:'B1'},
   {id:'M1.5',ue:'UE1',ueName:"Architecture du produit",pilier:'Product',nom:'Figma & Web Design',heures:7,promo:'B1'},
+  {id:'M1.6',ue:'UE1',ueName:"Architecture du produit",pilier:'Product',nom:'UI & Prototypage Webflow',heures:10,promo:'B1'},
   {id:'M1.7',ue:'UE1',ueName:"Architecture du produit",pilier:'Product',nom:'Bootcamp Product',heures:21,promo:'B1'},
   {id:'M2.1',ue:'UE2',ueName:"Opérations de l'entreprise",pilier:'Operations',nom:'Entreprise & Organisation',heures:18,promo:'B1'},
   {id:'M2.2',ue:'UE2',ueName:"Opérations de l'entreprise",pilier:'Operations',nom:'Finance — Corporate Finance',heures:30,promo:'B1'},
@@ -2863,6 +2882,8 @@ async function initAdmin() {
   await loadEAData();
   await loadUserLogins();
   await loadStudentPasswords();
+  await loadExtraModules();
+  await loadAirtableMappings();
   hideLoader();
   renderStudentsTab();
   renderBulletinsGrid();
@@ -3418,6 +3439,7 @@ async function showAdminTab(tab, el) {
   if (absSidebar) absSidebar.style.display = tab === 'absences' ? '' : 'none';
   if (tab==='bulletins') renderBulletinsGrid();
   if (tab==='dashboard') { loadJustificatifs(); renderDashboard(); updateAlertesBadge(); }
+  if (tab==='planning') { loadAirtablePlanning(currentPlanningPromo); }
   if (tab==='ea') renderEAProjects();
   if (tab==='absences') await initAbsencesTab();
   if (tab==='etudiants') { renderAdminsTable(); renderAssistantsTable(); renderMAAdminList(); }
@@ -4783,6 +4805,801 @@ function renderAlertes() {
 
   html += '</tbody></table></div>';
   container.innerHTML = html;
+}
+
+// === PLANNING AIRTABLE ===
+let currentPlanningPromo = 'B1';
+const airtablePlanningCache = {}; // { promo: records[] }
+
+const PILIER_COLORS = {
+  'Product':        '#C895EF',
+  'Operations':     '#BBC1B1',
+  'Growth & Sales': '#F89191',
+  'Data':           '#000',
+  'Other':          '#D0D0D0',
+  'BLOC 1':         '#C895EF',
+  'BLOC 2':         '#F89191',
+  'BLOC 3':         '#BBC1B1',
+  'BLOC 4':         '#000',
+  'TRANSVERSE':     '#D0D0D0',
+};
+
+function showPlanningClassTab(promo, el) {
+  currentPlanningPromo = promo;
+  document.querySelectorAll('[id^="plan-"]').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  loadAirtablePlanning(promo);
+}
+
+async function loadAirtablePlanning(promo, forceRefresh) {
+  const container = document.getElementById('planning-content');
+  if (!container) return;
+
+  // Ensure mappings and portal attendance are loaded (needed for reconciliation)
+  await loadAirtableMappings();
+  if (Object.keys(attendanceSessions).length === 0) {
+    await loadAttendanceData();
+  }
+
+  if (!forceRefresh && airtablePlanningCache[promo]) {
+    renderAirtableCalendar(promo, airtablePlanningCache[promo]);
+    return;
+  }
+
+  container.innerHTML = `<div style="text-align:center;padding:40px;color:#9090a0;font-size:13px">⏳ Chargement du planning depuis Airtable…</div>`;
+
+  try {
+    const r = await fetch(SB_URL + '/functions/v1/airtable-planning?promo=' + encodeURIComponent(promo), {
+      headers: { 'Authorization': 'Bearer ' + SB_KEY }
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      container.innerHTML = `<div style="background:#FEE2E2;border:1px solid #d4a0a0;border-radius:10px;padding:16px;color:#C03030;font-size:13px">
+        <strong>Erreur :</strong> ${data.error || 'impossible de charger le planning'}<br>
+        <code style="font-size:11px">${JSON.stringify(data.details || data, null, 0).slice(0, 400)}</code>
+      </div>`;
+      return;
+    }
+    airtablePlanningCache[promo] = data.records || [];
+    renderAirtableCalendar(promo, airtablePlanningCache[promo]);
+  } catch (e) {
+    container.innerHTML = `<div style="background:#FEE2E2;border:1px solid #d4a0a0;border-radius:10px;padding:16px;color:#C03030;font-size:13px">
+      <strong>Erreur réseau :</strong> ${String(e)}
+    </div>`;
+  }
+}
+
+let planningGroupBy = 'module'; // 'module' | 'week'
+let planningMatchFilter = 'all'; // 'all' | 'unmapped' | 'discrepancies'
+let airtableMappings = {}; // { 'B1|Activity': {...} } — composite key activity+promo
+
+function mappingKey(activity, promo) { return promo + '|' + activity; }
+
+async function loadAirtableMappings() {
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/airtable_module_mappings?select=*', {
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+    });
+    if (!r.ok) return;
+    const data = await r.json();
+    airtableMappings = {};
+    data.forEach(m => { airtableMappings[mappingKey(m.airtable_activity, m.promo)] = m; });
+  } catch (e) { console.warn('[Airtable mapping] load failed:', e); }
+}
+
+async function saveAirtableMapping(activity, promo, moduleId, status) {
+  const payload = {
+    airtable_activity: activity,
+    promo,
+    module_id: moduleId || null,
+    status,
+    mapped_by: currentAdminLogin || 'admin',
+    mapped_at: new Date().toISOString()
+  };
+  const r = await fetch(SB_URL + '/rest/v1/airtable_module_mappings?on_conflict=airtable_activity,promo', {
+    method: 'POST',
+    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY,
+      'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok) { showError("Erreur d'enregistrement du mapping"); return false; }
+  airtableMappings[mappingKey(activity, promo)] = payload;
+  return true;
+}
+
+async function deleteAirtableMapping(activity, promo) {
+  const url = SB_URL + '/rest/v1/airtable_module_mappings'
+    + '?airtable_activity=eq.' + encodeURIComponent(activity)
+    + '&promo=eq.' + encodeURIComponent(promo);
+  const r = await fetch(url, {
+    method: 'DELETE',
+    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Prefer': 'return=minimal' }
+  });
+  if (!r.ok) return false;
+  delete airtableMappings[mappingKey(activity, promo)];
+  return true;
+}
+
+// Charge les modules "Hors UE" depuis Supabase et les fusionne dans MODULES
+async function loadExtraModules() {
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/extra_modules?select=*', {
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+    });
+    if (!r.ok) return;
+    const data = await r.json();
+    // Remove previously merged extras to avoid duplication on reload
+    MODULES = MODULES.filter(m => !m.isExtra);
+    data.forEach(em => {
+      MODULES.push({
+        id: em.id,
+        ue: 'HORS_UE',
+        ueName: 'Hors UE',
+        pilier: 'Hors UE',
+        nom: em.nom,
+        heures: Number(em.heures) || 0,
+        promo: em.promo,
+        isExtra: true
+      });
+    });
+  } catch (e) { console.warn('[extra_modules] load failed:', e); }
+}
+
+// Crée les sessions portail à partir des données Airtable pour un module déjà existant
+// Renvoie true si succès, false sinon. No-op si le module a déjà des sessions.
+async function syncPortalSessionsFromAirtable(activity, promo, moduleId) {
+  const existing = attendanceSessions[moduleId] || [];
+  if (existing.length > 0) return true; // ne pas écraser des saisies manuelles
+
+  const records = (airtablePlanningCache[promo] || []).filter(r => r.activity === activity);
+  if (records.length === 0) return true; // rien à créer, mapping seul est OK
+
+  const sortedRecs = records
+    .filter(r => r.startDate)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+  // Use Airtable's Session field if all unique and non-null, else fall back to sequential
+  const airSessions = sortedRecs.map(r => r.session);
+  const allNonNull = airSessions.every(s => s != null);
+  const allUnique = new Set(airSessions).size === airSessions.length;
+  const useAirtableSession = allNonNull && allUnique;
+
+  const sessionRows = sortedRecs.map((r, idx) => ({
+    module_id: moduleId,
+    session_num: useAirtableSession ? Number(r.session) : idx + 1,
+    session_date: r.startDate.substring(0, 10),
+    session_hours: Number(r.duration) || null
+  }));
+
+  if (sessionRows.length === 0) return true;
+
+  const r = await fetch(SB_URL + '/rest/v1/attendance_sessions', {
+    method: 'POST',
+    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY,
+      'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+    body: JSON.stringify(sessionRows)
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    console.error('[syncPortalSessions] insert failed', t);
+    showError("Erreur lors de la création des sessions portail (les sessions Airtable ont peut-être des n° en double)");
+    return false;
+  }
+
+  // Update local cache
+  attendanceSessions[moduleId] = sessionRows.map(s => ({
+    session_num: s.session_num,
+    session_date: s.session_date,
+    session_hours: s.session_hours,
+    emargement_url: null
+  }));
+  return true;
+}
+
+// Crée un module "Hors UE" + ses sessions à partir des données Airtable
+async function createHorsUeFromAirtable(activity, promo) {
+  const records = (airtablePlanningCache[promo] || []).filter(r => r.activity === activity);
+  if (records.length === 0) {
+    showError("Aucune session Airtable trouvée pour ce cours");
+    return false;
+  }
+  // Generate unique id
+  const slug = String(activity).toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 30);
+  const id = `HU_${promo}_${slug}_${Math.random().toString(36).slice(2, 6)}`;
+  const totalHours = records.reduce((acc, r) => acc + (Number(r.duration) || 0), 0);
+
+  // 1. Insert into extra_modules
+  const r1 = await fetch(SB_URL + '/rest/v1/extra_modules', {
+    method: 'POST',
+    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY,
+      'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ id, promo, nom: activity, pilier: 'Hors UE',
+      heures: totalHours, source: 'airtable_no_equivalent' })
+  });
+  if (!r1.ok) { showError("Erreur création module Hors UE"); return false; }
+
+  // 2. Insert sessions — numérotation séquentielle basée sur la date
+  //    (plus robuste que d'utiliser le champ Session d'Airtable qui peut être dupliqué)
+  const sortedRecs = records
+    .filter(r => r.startDate)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const sessionRows = sortedRecs.map((r, idx) => ({
+    module_id: id,
+    session_num: idx + 1,
+    session_date: r.startDate.substring(0, 10),
+    session_hours: Number(r.duration) || null
+  }));
+
+  if (sessionRows.length > 0) {
+    const r2 = await fetch(SB_URL + '/rest/v1/attendance_sessions', {
+      method: 'POST',
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY,
+        'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify(sessionRows)
+    });
+    if (!r2.ok) {
+      // Rollback the extra_module
+      await fetch(SB_URL + '/rest/v1/extra_modules?id=eq.' + encodeURIComponent(id), {
+        method: 'DELETE',
+        headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+      });
+      showError("Erreur création des sessions");
+      return false;
+    }
+  }
+
+  // 3. Save the mapping pointing to this new id
+  const ok = await saveAirtableMapping(activity, promo, id, 'no_equivalent');
+  if (!ok) return false;
+
+  // 4. Update local caches
+  MODULES.push({
+    id, ue: 'HORS_UE', ueName: 'Hors UE', pilier: 'Hors UE',
+    nom: activity, heures: totalHours, promo, isExtra: true
+  });
+  attendanceSessions[id] = sessionRows.map(s => ({
+    session_num: s.session_num,
+    session_date: s.session_date,
+    session_hours: s.session_hours,
+    emargement_url: null
+  }));
+
+  return true;
+}
+
+function normalizeForMatch(s) {
+  return String(s ?? '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = new Array(n + 1);
+  for (let j = 0; j <= n; j++) dp[j] = j;
+  for (let i = 1; i <= m; i++) {
+    let prev = dp[0];
+    dp[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const tmp = dp[j];
+      dp[j] = a[i-1] === b[j-1] ? prev : Math.min(prev, dp[j], dp[j-1]) + 1;
+      prev = tmp;
+    }
+  }
+  return dp[n];
+}
+
+function similarity(a, b) {
+  const na = normalizeForMatch(a);
+  const nb = normalizeForMatch(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  const maxLen = Math.max(na.length, nb.length);
+  return 1 - levenshtein(na, nb) / maxLen;
+}
+
+function findBestModuleMatches(activity, promo) {
+  const promoMap = {B1:'B1',B2:'B2',B3:'B3',MCOM1:'MCOM1',MCOM2:'MCOM2'};
+  const candidates = MODULES.filter(m => m.promo === promoMap[promo]);
+  return candidates
+    .map(m => ({ module: m, score: similarity(activity, m.nom) }))
+    .filter(x => x.score >= 0.4)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+}
+
+function getModuleMatchInfo(activity, promo) {
+  const map = airtableMappings[mappingKey(activity, promo)];
+  if (map) {
+    return {
+      kind: map.status,
+      mapping: map,
+      portalModule: map.module_id ? MODULES.find(m => m.id === map.module_id) : null
+    };
+  }
+  const matches = findBestModuleMatches(activity, promo);
+  return {
+    kind: matches.length > 0 ? 'suggested' : 'unmapped',
+    mapping: null,
+    suggestions: matches
+  };
+}
+
+function reconcileSession(airSess, portalModuleId, matchByDate) {
+  const portalSessions = (attendanceSessions[portalModuleId] || []);
+  const airDate = airSess.startDate ? airSess.startDate.substring(0, 10) : null;
+  const portal = matchByDate
+    ? (airDate ? portalSessions.find(s => s.session_date === airDate) : null)
+    : portalSessions.find(s => s.session_num === airSess.session);
+  if (!portal) return { status: 'missing_portal' };
+  const issues = [];
+  if (!matchByDate && airDate && portal.session_date && airDate !== portal.session_date) issues.push('date');
+  const portalH = Number(portal.session_hours) || 0;
+  const airH = Number(airSess.duration) || 0;
+  if (portalH && airH && Math.abs(portalH - airH) > 0.05) issues.push('hours');
+  return issues.length === 0 ? { status: 'ok', portal } : { status: 'mismatch', issues, portal };
+}
+
+function reconciliationBadge(rec) {
+  if (rec.status === 'ok') return '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#DCFCE7;color:#15803D">✓ OK</span>';
+  if (rec.status === 'missing_portal') return '<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FEE2E2;color:#C03030" title="Aucune session correspondante côté portail">✗ Manquant portail</span>';
+  // mismatch
+  const labels = rec.issues.map(i => i === 'date' ? 'Date' : 'Durée').join(' + ');
+  return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;background:#FEF3C7;color:#92620A" title="Divergence sur : ${labels}">⚠ ${labels}</span>`;
+}
+
+function showAirtableMappingModal(activity, promo) {
+  const matches = findBestModuleMatches(activity, promo);
+  const promoMap = {B1:'B1',B2:'B2',B3:'B3',MCOM1:'MCOM1',MCOM2:'MCOM2'};
+  const allModules = MODULES.filter(m => m.promo === promoMap[promo] && !m.isExtra);
+  const existing = airtableMappings[mappingKey(activity, promo)];
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:24px;width:560px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.18)">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9090a0;margin-bottom:4px">Cours Airtable · ${promo}</div>
+      <div style="font-size:16px;font-weight:700;color:#000;margin-bottom:20px">${escapeHtml(activity)}</div>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9090a0;margin-bottom:8px">Suggestions automatiques</div>
+      <div id="map-suggestions">
+        ${matches.length === 0
+          ? '<div style="font-size:12px;color:#9090a0;padding:12px;background:#f8f8f6;border-radius:8px;margin-bottom:14px">Aucune suggestion. Utilise la recherche manuelle ci-dessous.</div>'
+          : matches.map((m, i) => {
+              const isExisting = existing?.module_id === m.module.id;
+              const checked = isExisting ? 'checked' : (i === 0 && !existing ? 'checked' : '');
+              const conf = Math.round(m.score * 100);
+              const confColor = conf >= 80 ? '#2D7A4A' : conf >= 60 ? '#92620A' : '#C03030';
+              return `<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid #e8e8e8;border-radius:10px;margin-bottom:8px;cursor:pointer">
+                <input type="radio" name="map-choice" value="${m.module.id}" ${checked}>
+                <div style="flex:1">
+                  <div style="font-size:13px;font-weight:600;color:#000">${escapeHtml(m.module.nom)}</div>
+                  <div style="font-size:11px;color:#9090a0">${m.module.id} · ${escapeHtml(m.module.pilier || '')}</div>
+                </div>
+                <div style="font-size:11px;font-weight:700;color:${confColor}">${conf}%</div>
+              </label>`;
+            }).join('')}
+      </div>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9090a0;margin:14px 0 8px">Recherche manuelle</div>
+      <input type="text" id="map-search" placeholder="Tape un nom de module…"
+        style="width:100%;padding:10px 12px;border:1.5px solid #e8e8e8;border-radius:10px;font-size:13px;font-family:inherit;margin-bottom:8px;box-sizing:border-box">
+      <div id="map-search-results" style="max-height:180px;overflow-y:auto;margin-bottom:14px"></div>
+
+      <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f8f8f6;border-radius:8px;margin-bottom:18px;cursor:pointer">
+        <input type="radio" name="map-choice" value="__no_equivalent__" ${existing?.status === 'no_equivalent' ? 'checked' : ''}>
+        <span style="font-size:13px;color:#444">Pas d'équivalent côté portail (cours hors cursus)</span>
+      </label>
+
+      <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;flex-wrap:wrap">
+        ${existing ? '<button id="map-delete" style="background:none;border:none;color:#C03030;font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline">Supprimer le mapping</button>' : '<span></span>'}
+        <div style="display:flex;gap:10px">
+          <button id="map-cancel" style="padding:10px 18px;border:1.5px solid #e8e8e8;border-radius:10px;background:#fff;font-size:13px;font-weight:600;cursor:pointer;color:#444">Annuler</button>
+          <button id="map-confirm" style="padding:10px 18px;border:none;border-radius:10px;background:#000;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Valider</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const searchInput = overlay.querySelector('#map-search');
+  const searchResults = overlay.querySelector('#map-search-results');
+  searchInput.oninput = () => {
+    const q = normalizeForMatch(searchInput.value);
+    if (!q || q.length < 2) { searchResults.innerHTML = ''; return; }
+    const filtered = allModules.filter(m => normalizeForMatch(m.nom).includes(q)).slice(0, 10);
+    searchResults.innerHTML = filtered.length === 0
+      ? '<div style="font-size:12px;color:#9090a0;padding:8px">Aucun module</div>'
+      : filtered.map(m => `<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #f0f0f0;border-radius:8px;margin-bottom:4px;cursor:pointer">
+          <input type="radio" name="map-choice" value="${m.id}">
+          <div style="flex:1"><div style="font-size:12px;font-weight:600;color:#000">${escapeHtml(m.nom)}</div><div style="font-size:10px;color:#9090a0">${m.id} · ${escapeHtml(m.pilier||'')}</div></div>
+        </label>`).join('');
+  };
+
+  overlay.querySelector('#map-cancel').onclick = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelector('#map-confirm').onclick = async () => {
+    const sel = overlay.querySelector('input[name="map-choice"]:checked');
+    if (!sel) { alert('Sélectionne une option'); return; }
+    const val = sel.value;
+    let ok;
+    if (val === '__no_equivalent__') {
+      // Re-clic identique : ne rien refaire
+      if (existing && existing.status === 'no_equivalent') { overlay.remove(); return; }
+      showLoader('Création du module Hors UE…');
+      ok = await createHorsUeFromAirtable(activity, promo);
+      hideLoader();
+    } else {
+      showLoader('Enregistrement…');
+      ok = await saveAirtableMapping(activity, promo, val, 'verified');
+      // Auto-création des sessions portail si le module n'en a aucune
+      if (ok) await syncPortalSessionsFromAirtable(activity, promo, val);
+      hideLoader();
+    }
+    if (ok) {
+      overlay.remove();
+      showSuccess('✓ Mapping enregistré');
+      const records = airtablePlanningCache[currentPlanningPromo];
+      if (records) renderAirtableCalendar(currentPlanningPromo, records);
+    }
+  };
+
+  const delBtn = overlay.querySelector('#map-delete');
+  if (delBtn) {
+    delBtn.onclick = async () => {
+      const wasHorsUE = existing.status === 'no_equivalent';
+      const msg = wasHorsUE
+        ? "Supprimer le mapping ? Le module Hors UE et ses présences/absences seront conservés (ils restent visibles dans l'écran Absences)."
+        : 'Supprimer le mapping pour ce cours ?';
+      if (!confirm(msg)) return;
+      if (await deleteAirtableMapping(activity, promo)) {
+        overlay.remove();
+        showSuccess('Mapping supprimé');
+        const records = airtablePlanningCache[currentPlanningPromo];
+        if (records) renderAirtableCalendar(currentPlanningPromo, records);
+      }
+    };
+  }
+}
+
+function setPlanningGroupBy(mode) {
+  planningGroupBy = mode;
+  const records = airtablePlanningCache[currentPlanningPromo];
+  if (records) renderAirtableCalendar(currentPlanningPromo, records);
+}
+
+function renderAirtableCalendar(promo, records) {
+  const container = document.getElementById('planning-content');
+  if (!container) return;
+
+  if (!records || records.length === 0) {
+    container.innerHTML = `<div style="text-align:center;padding:40px;color:#9090a0;font-size:14px">
+      Aucune séance trouvée pour cette promotion dans Airtable.
+    </div>`;
+    return;
+  }
+
+  // Coerce duration to number (Airtable may return string)
+  records.forEach(r => { r.duration = Number(r.duration) || 0; });
+
+  const sorted = records.slice().sort((a, b) => {
+    if (!a.startDate) return 1;
+    if (!b.startDate) return -1;
+    return a.startDate.localeCompare(b.startDate);
+  });
+
+  const totalSessions = records.length;
+  const totalHours = records.reduce((acc, r) => acc + r.duration, 0);
+  const uniqueActivitiesArr = Array.from(new Set(records.map(r => r.activity)));
+  const uniqueActivities = uniqueActivitiesArr.length;
+  const uniqueWeeks = new Set(records.map(r => r.week)).size;
+
+  // Mapping status counts per unique activity
+  let cVerified = 0, cNoEquiv = 0, cSuggested = 0, cUnmapped = 0;
+  uniqueActivitiesArr.forEach(name => {
+    const info = getModuleMatchInfo(name, promo);
+    if (info.kind === 'verified') cVerified++;
+    else if (info.kind === 'no_equivalent') cNoEquiv++;
+    else if (info.kind === 'suggested') cSuggested++;
+    else cUnmapped++;
+  });
+  const cToProcess = cSuggested + cUnmapped;
+
+  let html = '';
+  // Volume KPIs
+  html += `<div class="dash-summary-row" style="margin-bottom:14px">
+    <div class="dash-kpi"><div class="dash-kpi-val">${totalSessions}</div><div class="dash-kpi-lbl">Séances</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-val">${totalHours.toFixed(1)}h</div><div class="dash-kpi-lbl">Volume horaire</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-val">${uniqueActivities}</div><div class="dash-kpi-lbl">Modules distincts</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-val">${uniqueWeeks}</div><div class="dash-kpi-lbl">Semaines</div></div>
+  </div>`;
+  // Mapping status KPIs
+  html += `<div class="dash-summary-row" style="margin-bottom:20px">
+    <div class="dash-kpi"><div class="dash-kpi-val" style="color:#15803D">${cVerified}</div><div class="dash-kpi-lbl">Modules vérifiés</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-val" style="color:#7B3FA0">${cNoEquiv}</div><div class="dash-kpi-lbl">Sans équivalence (Hors UE)</div></div>
+    <div class="dash-kpi"><div class="dash-kpi-val" style="color:${cToProcess>0?'#C03030':'#15803D'}">${cToProcess}</div><div class="dash-kpi-lbl">À traiter <span style="color:#9090a0">(${cSuggested} suggérés · ${cUnmapped} non mappés)</span></div></div>
+  </div>`;
+
+  const btnStyle = (active) => `font-size:11px;padding:5px 12px;border-radius:8px;border:1.5px solid ${active?'#000':'var(--blanc2)'};background:${active?'#000':'var(--blanc-pur)'};color:${active?'#fff':'var(--gris-text)'};cursor:pointer;font-weight:600`;
+  html += `<div style="display:flex;gap:6px;margin-bottom:16px;align-items:center">
+    <span style="font-size:11px;font-weight:600;color:var(--gris-text);margin-right:4px">Grouper par :</span>
+    <button onclick="setPlanningGroupBy('module')" style="${btnStyle(planningGroupBy==='module')}">Module</button>
+    <button onclick="setPlanningGroupBy('week')"   style="${btnStyle(planningGroupBy==='week')}">Semaine</button>
+  </div>`;
+
+  html += planningGroupBy === 'module' ? renderPlanningByModule(sorted) : renderPlanningByWeek(sorted);
+  container.innerHTML = html;
+}
+
+function renderPlanningByModule(sorted) {
+  const promo = currentPlanningPromo;
+  const modules = {};
+  sorted.forEach(r => {
+    const k = r.activity || '— sans nom —';
+    if (!modules[k]) modules[k] = [];
+    modules[k].push(r);
+  });
+
+  // Compute per-module match info + reconciliation issue counts
+  const moduleStats = {};
+  Object.keys(modules).forEach(name => {
+    const info = getModuleMatchInfo(name, promo);
+    let mismatch = 0, missing = 0;
+    if ((info.kind === 'verified' || info.kind === 'no_equivalent') && info.mapping?.module_id) {
+      const matchByDate = info.kind === 'no_equivalent';
+      modules[name].forEach(r => {
+        const rec = reconcileSession(r, info.mapping.module_id, matchByDate);
+        if (rec.status === 'mismatch') mismatch++;
+        else if (rec.status === 'missing_portal') missing++;
+      });
+    }
+    moduleStats[name] = { info, mismatch, missing };
+  });
+
+  // Apply filter
+  let visibleModules = Object.keys(modules);
+  if (planningMatchFilter === 'unmapped') {
+    visibleModules = visibleModules.filter(n => {
+      const k = moduleStats[n].info.kind;
+      return k === 'unmapped' || k === 'suggested';
+    });
+  } else if (planningMatchFilter === 'discrepancies') {
+    visibleModules = visibleModules.filter(n => moduleStats[n].mismatch > 0 || moduleStats[n].missing > 0);
+  }
+  visibleModules.sort((a, b) => a.localeCompare(b, 'fr'));
+
+  // Counts for filter pills
+  const totalCount      = Object.keys(modules).length;
+  const unmappedCount   = Object.keys(modules).filter(n => ['unmapped','suggested'].includes(moduleStats[n].info.kind)).length;
+  const discrepCount    = Object.keys(modules).filter(n => moduleStats[n].mismatch > 0 || moduleStats[n].missing > 0).length;
+
+  const filterBtn = (key, label, count) => {
+    const active = planningMatchFilter === key;
+    return `<button onclick="setPlanningMatchFilter('${key}')"
+      style="font-size:11px;padding:5px 12px;border-radius:8px;border:1.5px solid ${active?'#000':'var(--blanc2)'};background:${active?'#000':'var(--blanc-pur)'};color:${active?'#fff':'var(--gris-text)'};cursor:pointer;font-weight:600">
+      ${label} <span style="opacity:0.7">(${count})</span>
+    </button>`;
+  };
+
+  let html = `<div style="display:flex;gap:6px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:11px;font-weight:600;color:var(--gris-text);margin-right:4px">Filtrer :</span>
+    ${filterBtn('all',           'Tout',              totalCount)}
+    ${filterBtn('unmapped',      'Non mappés',        unmappedCount)}
+    ${filterBtn('discrepancies', 'Avec divergences',  discrepCount)}
+  </div>`;
+
+  if (visibleModules.length === 0) {
+    html += `<div style="text-align:center;padding:30px;color:#9090a0;font-size:13px;background:#f8f8f6;border-radius:10px">Aucun module ne correspond au filtre actuel.</div>`;
+    return html;
+  }
+
+  visibleModules.forEach(name => {
+    const sessions = modules[name];
+    const stat = moduleStats[name];
+    const info = stat.info;
+    const totalH = sessions.reduce((a, r) => a + r.duration, 0);
+    const pilier = sessions[0].pilier || '';
+    const pilierColor = PILIER_COLORS[pilier] || '#888';
+    const firstDate = sessions[0].startDate;
+    const lastDate  = sessions[sessions.length - 1].startDate;
+    const dateRange = firstDate
+      ? `${formatAirtableDate(firstDate)}${lastDate && lastDate !== firstDate ? ' → ' + formatAirtableDate(lastDate) : ''}`
+      : '—';
+
+    // Status badge + association line
+    let statusBadge = '', assocLine = '';
+    if (info.kind === 'verified') {
+      const m = info.portalModule;
+      statusBadge = `<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px;background:#DCFCE7;color:#15803D">✓ Vérifié</span>`;
+      assocLine = `<div style="font-size:11px;color:#15803D;margin-top:4px">→ ${escapeHtml(m?.nom || '?')} <span style="color:#9090a0">(${m?.id || '?'})</span></div>`;
+    } else if (info.kind === 'no_equivalent') {
+      statusBadge = `<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px;background:#E8E8F0;color:#444">∅ Sans équivalent</span>`;
+    } else if (info.kind === 'suggested') {
+      const top = info.suggestions[0];
+      const conf = Math.round(top.score * 100);
+      statusBadge = `<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px;background:#FEF3C7;color:#92620A">⚠ Suggéré (${conf}%)</span>`;
+      assocLine = `<div style="font-size:11px;color:#92620A;margin-top:4px">≈ ${escapeHtml(top.module.nom)} <span style="color:#9090a0">(${top.module.id})</span></div>`;
+    } else {
+      statusBadge = `<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px;background:#FEE2E2;color:#C03030">✗ Non mappé</span>`;
+    }
+
+    // Discrepancy summary in header
+    let discrepSummary = '';
+    if (info.kind === 'verified' && (stat.mismatch > 0 || stat.missing > 0)) {
+      const parts = [];
+      if (stat.mismatch > 0) parts.push(`<span style="color:#92620A">${stat.mismatch} divergence${stat.mismatch>1?'s':''}</span>`);
+      if (stat.missing > 0) parts.push(`<span style="color:#C03030">${stat.missing} manquant${stat.missing>1?'es':''}</span>`);
+      discrepSummary = ` · ${parts.join(' · ')}`;
+    }
+
+    const associerLabel = info.mapping ? '✎ Modifier' : '🔗 Associer';
+    const portalModuleId = (info.kind === 'verified' || info.kind === 'no_equivalent')
+      ? info.mapping?.module_id : null;
+    const jumpLabel = info.kind === 'no_equivalent' ? '📅 Voir absences (Hors UE)' : '📅 Voir absences';
+    const jumpButton = portalModuleId
+      ? `<button onclick="jumpToAbsModule('${portalModuleId}','${promo}')"
+          style="background:#000;color:#fff;border:1.5px solid #000;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap"
+          title="Ouvrir la vue Absences du module correspondant">${jumpLabel}</button>`
+      : '';
+
+    html += `<div style="background:#fff;border:1px solid #e8e8e8;border-radius:14px;margin-bottom:14px;overflow:hidden">
+      <div style="background:#f8f8f6;padding:12px 16px;border-bottom:1px solid #e8e8e8">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1">
+            <div style="width:8px;height:8px;border-radius:50%;background:${pilierColor};flex-shrink:0"></div>
+            <span style="font-size:13px;font-weight:700;color:#000">${escapeHtml(name)}</span>
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:9px;background:${pilierColor}22;color:${pilierColor}">${escapeHtml(pilier)}</span>
+            ${statusBadge}
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${jumpButton}
+            <button onclick="showAirtableMappingModal(${JSON.stringify(name).replace(/"/g,'&quot;')}, '${promo}')"
+              style="background:#fff;color:var(--noir);border:1.5px solid var(--blanc2);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">
+              ${associerLabel}
+            </button>
+          </div>
+        </div>
+        ${assocLine}
+        <div style="font-size:11px;color:#9090a0;margin-top:6px">${sessions.length} séance${sessions.length>1?'s':''} · <strong style="color:#000">${totalH.toFixed(1)}h</strong> · ${dateRange}${discrepSummary}</div>
+      </div>
+      <table class="dash-table" style="margin:0">
+        <thead style="background:#fff"><tr>
+          <th style="padding:8px 12px">Session</th>
+          <th>Date</th>
+          <th>Horaires</th>
+          <th>Durée</th>
+          <th>Semaine</th>
+          <th>Type</th>
+          <th>Cohérence portail</th>
+        </tr></thead><tbody>`;
+    sessions.forEach(r => {
+      const startTime = formatAirtableTime(r.startDate);
+      const endTime   = formatAirtableTime(r.endDate);
+      const dateOnly  = formatAirtableDate(r.startDate);
+      let recCell = '<span style="font-size:10px;color:#c0c0c0">—</span>';
+      if ((info.kind === 'verified' || info.kind === 'no_equivalent') && info.mapping?.module_id) {
+        const matchByDate = info.kind === 'no_equivalent';
+        const rec = reconcileSession(r, info.mapping.module_id, matchByDate);
+        recCell = reconciliationBadge(rec);
+      }
+      html += `<tr>
+        <td style="font-size:12px;font-weight:600;padding:8px 12px">S${r.session ?? '—'}</td>
+        <td style="font-size:12px">${dateOnly}</td>
+        <td style="font-size:12px">${startTime}–${endTime}</td>
+        <td style="font-size:12px;font-weight:600">${r.duration.toFixed(1)}h</td>
+        <td style="font-size:11px;color:#9090a0">S${r.week ?? '—'}</td>
+        <td style="font-size:11px;color:#9090a0">${escapeHtml(r.type)}</td>
+        <td>${recCell}</td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+  });
+  return html;
+}
+
+function setPlanningMatchFilter(f) {
+  planningMatchFilter = f;
+  const records = airtablePlanningCache[currentPlanningPromo];
+  if (records) renderAirtableCalendar(currentPlanningPromo, records);
+}
+
+async function jumpToAbsModule(moduleId, promo) {
+  // Switch the absences-tab promo so the module is visible in the sidebar
+  currentAbsPromo = promo;
+  // Find the Absences nav-tab element
+  let absTab = null;
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    const onclick = t.getAttribute('onclick') || '';
+    if (onclick.includes("'absences'")) absTab = t;
+  });
+  if (!absTab) return;
+  await showAdminTab('absences', absTab);
+  // initAbsencesTab has run; pick the right module
+  selectAbsModule(moduleId);
+}
+
+function renderPlanningByWeek(sorted) {
+  const weeks = {};
+  sorted.forEach(r => {
+    const w = r.week ?? '?';
+    if (!weeks[w]) weeks[w] = [];
+    weeks[w].push(r);
+  });
+  const weekKeys = Object.keys(weeks).sort((a, b) => {
+    const da = weeks[a][0]?.startDate || '';
+    const db = weeks[b][0]?.startDate || '';
+    return da.localeCompare(db);
+  });
+
+  let html = '';
+  weekKeys.forEach(wk => {
+    const sessions = weeks[wk];
+    const firstDate = sessions[0].startDate;
+    const lastDate  = sessions[sessions.length - 1].startDate;
+    const dateRangeLabel = firstDate
+      ? `${formatAirtableDate(firstDate)}${lastDate && lastDate !== firstDate ? ' → ' + formatAirtableDate(lastDate) : ''}`
+      : '—';
+    const weekHours = sessions.reduce((a, r) => a + r.duration, 0);
+
+    html += `<div style="background:#fff;border:1px solid #e8e8e8;border-radius:14px;margin-bottom:14px;overflow:hidden">
+      <div style="background:#f8f8f6;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e8e8e8">
+        <div>
+          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9090a0">Semaine ${wk}</span>
+          <span style="margin-left:10px;font-size:12px;color:#444">${dateRangeLabel}</span>
+        </div>
+        <div style="font-size:11px;color:#9090a0">${sessions.length} séance${sessions.length>1?'s':''} · <strong style="color:#000">${weekHours.toFixed(1)}h</strong></div>
+      </div>
+      <table class="dash-table" style="margin:0">
+        <thead style="background:#fff"><tr>
+          <th style="padding:8px 12px">Date</th>
+          <th>Horaires</th>
+          <th>Module</th>
+          <th>Pilier</th>
+          <th>Session</th>
+          <th>Durée</th>
+          <th>Type</th>
+        </tr></thead><tbody>`;
+    sessions.forEach(r => {
+      const startTime = formatAirtableTime(r.startDate);
+      const endTime   = formatAirtableTime(r.endDate);
+      const dateOnly  = formatAirtableDate(r.startDate);
+      const pilierColor = PILIER_COLORS[r.pilier] || '#888';
+      html += `<tr>
+        <td style="font-size:12px;font-weight:600;padding:8px 12px">${dateOnly}</td>
+        <td style="font-size:12px">${startTime}–${endTime}</td>
+        <td style="font-size:12px;font-weight:600;color:#000;max-width:280px">${escapeHtml(r.activity)}</td>
+        <td><span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:10px;background:${pilierColor}22;color:${pilierColor}">${escapeHtml(r.pilier)}</span></td>
+        <td style="font-size:12px;color:#9090a0">S${r.session ?? '—'}</td>
+        <td style="font-size:12px;font-weight:600">${r.duration.toFixed(1)}h</td>
+        <td style="font-size:11px;color:#9090a0">${escapeHtml(r.type)}</td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+  });
+  return html;
+}
+
+function formatAirtableDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+}
+function formatAirtableTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function sortAlertes(col) {
@@ -6362,15 +7179,17 @@ function buildAbsSidebar() {
       ${label}</button>`;
   });
   sw += '</div>';
-  const mods = MODULES.filter(m => m.promo === currentAbsPromo);
+  const allMods = MODULES.filter(m => m.promo === currentAbsPromo);
+  const regularMods = allMods.filter(m => !m.isExtra);
+  const horsUeMods  = allMods.filter(m => m.isExtra);
+
   let h = '';
   let lastUE = '';
-  mods.forEach(m => {
+  regularMods.forEach(m => {
     if (m.ue !== lastUE) {
       h += `<div class="sidebar-section-label">${m.ue} — ${m.ueName}</div>`;
       lastUE = m.ue;
     }
-    const pc = PILIER_CLASS[m.pilier] || 'pt-other';
     const isCertif = m.evalType === 'CERTIF';
     const isCCO = m.evalType === 'CCO';
     const isSoutenance = m.evalType === 'SOUTENANCE';
@@ -6390,6 +7209,18 @@ function buildAbsSidebar() {
       <span style="line-height:1.35">${m.nom}</span>
     </div>`;
   });
+
+  // Section "Hors UE" en bas (modules synthétisés depuis Airtable no_equivalent)
+  if (horsUeMods.length > 0) {
+    h += `<div class="sidebar-section-label" style="background:rgba(0,0,0,0.04);color:#7B3FA0;border-top:1.5px solid #e8e8e8;margin-top:8px;padding-top:10px">HORS UE</div>`;
+    horsUeMods.forEach(m => {
+      const isActive = currentAbsModule?.id === m.id;
+      h += `<div class="sidebar-item${isActive?' active':''}" id="abs-si-${m.id}" onclick="selectAbsModule('${m.id}')">
+        <span class="sidebar-pilier-tag" style="background:rgba(123,63,160,0.12);color:#7B3FA0">HU</span>
+        <span style="line-height:1.35">${m.nom}</span>
+      </div>`;
+    });
+  }
   sidebar.innerHTML = sw + h;
 }
 
@@ -6437,6 +7268,59 @@ async function loadAttendanceData() {
   } catch(e) { console.error('attendance load error', e); }
 }
 
+async function deleteHorsUeModule(moduleId) {
+  const m = MODULES.find(x => x.id === moduleId);
+  if (!m || !m.isExtra) return;
+  if (!confirm(`Supprimer définitivement le module "${m.nom}" ?\n\nToutes les sessions et présences/absences associées seront effacées. Cette action est irréversible.`)) return;
+
+  showLoader('Suppression…');
+  try {
+    // 1. Delete attendance records (status par étudiant)
+    await fetch(SB_URL + '/rest/v1/attendance?module_id=eq.' + encodeURIComponent(moduleId), {
+      method: 'DELETE',
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Prefer': 'return=minimal' }
+    });
+    // 2. Delete attendance_sessions
+    await fetch(SB_URL + '/rest/v1/attendance_sessions?module_id=eq.' + encodeURIComponent(moduleId), {
+      method: 'DELETE',
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Prefer': 'return=minimal' }
+    });
+    // 3. Delete the airtable mapping that points to this module (re-permet "Pas d'équivalent")
+    await fetch(SB_URL + '/rest/v1/airtable_module_mappings?module_id=eq.' + encodeURIComponent(moduleId), {
+      method: 'DELETE',
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Prefer': 'return=minimal' }
+    });
+    // 4. Delete the extra_module
+    const r = await fetch(SB_URL + '/rest/v1/extra_modules?id=eq.' + encodeURIComponent(moduleId), {
+      method: 'DELETE',
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Prefer': 'return=minimal' }
+    });
+    if (!r.ok) { hideLoader(); showError('Erreur lors de la suppression'); return; }
+
+    // 5. Update local caches
+    MODULES = MODULES.filter(x => x.id !== moduleId);
+    delete attendanceSessions[moduleId];
+    Object.keys(attendanceData).forEach(k => {
+      if (k.startsWith(moduleId + '_')) delete attendanceData[k];
+    });
+    Object.keys(airtableMappings).forEach(k => {
+      if (airtableMappings[k]?.module_id === moduleId) delete airtableMappings[k];
+    });
+
+    hideLoader();
+    showSuccess('Module Hors UE supprimé');
+
+    // Reset the absences view
+    currentAbsModule = null;
+    buildAbsSidebar();
+    document.getElementById('absences-content').innerHTML =
+      '<div class="page-title">Absences</div><div class="page-sub">Sélectionnez un module dans la barre latérale</div>';
+  } catch (e) {
+    hideLoader();
+    showError('Erreur : ' + e.message);
+  }
+}
+
 function selectAbsModule(moduleId) {
   currentAbsModule = MODULES.find(m => m.id === moduleId);
   buildAbsSidebar();
@@ -6450,9 +7334,30 @@ function renderAbsTable() {
   const students = STUDENTS.filter(s => currentAbsPromo === 'B1' ? s.annee === 1 : currentAbsPromo === 'B2' ? s.annee === 2 : currentAbsPromo === 'B3' ? s.annee === 3 : currentAbsPromo === 'MCOM1' ? s.annee === 4 : currentAbsPromo === 'MCOM2' ? s.annee === 5 : false);
   const sessions = attendanceSessions[m.id] || [];
 
-  let h = `<div style="margin-bottom:20px">
-    <div style="font-size:18px;font-weight:700;color:var(--noir);margin-bottom:4px">${m.nom}</div>
-    <div style="font-size:12px;color:var(--gris-text)">${m.pilier} · MCOM 1 · ${m.heures}h</div>
+  const deleteHorsUeBtn = m.isExtra
+    ? `<button onclick="deleteHorsUeModule('${m.id}')"
+        style="background:#FEE2E2;color:#C03030;border:1.5px solid #C03030;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap"
+        title="Supprimer définitivement ce module Hors UE et toutes ses présences/absences">🗑 Supprimer le module</button>`
+    : '';
+
+  // Badge mapping Airtable : "Vérifié" si rapproché d'une activity Airtable, "Hors UE" pour les modules synthétisés
+  let mappingBadge = '';
+  if (m.isExtra) {
+    mappingBadge = `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:9px;background:rgba(123,63,160,0.12);color:#7B3FA0;vertical-align:middle;margin-left:6px">HORS UE</span>`;
+  } else {
+    const verifiedMapping = Object.values(airtableMappings).find(map => map.module_id === m.id && map.status === 'verified');
+    if (verifiedMapping) {
+      mappingBadge = `<span title="Cours rapproché du planning Airtable : ${verifiedMapping.airtable_activity}"
+        style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:9px;background:#DCFCE7;color:#15803D;vertical-align:middle;margin-left:6px">✓ Vérifié</span>`;
+    }
+  }
+
+  let h = `<div style="margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
+    <div>
+      <div style="font-size:18px;font-weight:700;color:var(--noir);margin-bottom:4px">${m.nom}${mappingBadge}</div>
+      <div style="font-size:12px;color:var(--gris-text)">${m.pilier} · ${m.heures}h</div>
+    </div>
+    ${deleteHorsUeBtn}
   </div>`;
 
   // Action buttons
