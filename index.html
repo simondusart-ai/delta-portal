@@ -7332,7 +7332,14 @@ function renderAbsTable() {
   if (!currentAbsModule) return;
   const m = currentAbsModule;
   const students = STUDENTS.filter(s => currentAbsPromo === 'B1' ? s.annee === 1 : currentAbsPromo === 'B2' ? s.annee === 2 : currentAbsPromo === 'B3' ? s.annee === 3 : currentAbsPromo === 'MCOM1' ? s.annee === 4 : currentAbsPromo === 'MCOM2' ? s.annee === 5 : false);
-  const sessions = attendanceSessions[m.id] || [];
+  const sessions = (attendanceSessions[m.id] || []).slice().sort((a, b) => {
+    // Tri chronologique : sessions sans date à la fin, puis par n° en cas d'égalité
+    if (!a.session_date && !b.session_date) return a.session_num - b.session_num;
+    if (!a.session_date) return 1;
+    if (!b.session_date) return -1;
+    const c = a.session_date.localeCompare(b.session_date);
+    return c !== 0 ? c : a.session_num - b.session_num;
+  });
 
   const deleteHorsUeBtn = m.isExtra
     ? `<button onclick="deleteHorsUeModule('${m.id}')"
