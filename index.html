@@ -3891,12 +3891,14 @@ function showBlocDetail(studentId, cls, singlePilier) {
       const acq = g.nonAcquis !== undefined && g.nonAcquis !== '' ? parseInt(g.nonAcquis) === 0 : null;
       if (acq === true) return { str: '✓ Acquis', color: '#2D7A4A' };
       if (acq === false) return { str: '✕ Non acquis', color: '#C03030' };
+      if (g.valide) return { str: 'Val.', color: '#2D7A4A' };
       return { str: '—', color: '#c0c0c0' };
     }
     if (g.note !== '' && g.note !== undefined && g.note !== null) {
       const n = parseFloat(g.note);
       return { str: n.toFixed(2), color: n >= 10 ? '#2D7A4A' : '#C03030' };
     }
+    if (g.valide) return { str: 'Val.', color: '#2D7A4A' };
     return { str: '—', color: '#c0c0c0' };
   }
 
