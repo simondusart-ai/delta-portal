@@ -5347,10 +5347,14 @@ function renderAirtableCalendar(promo, records) {
     <div class="dash-kpi"><div class="dash-kpi-val">${uniqueWeeks}</div><div class="dash-kpi-lbl">Semaines</div></div>
   </div>`;
   // Mapping status KPIs
+  const toProcessClickable = cToProcess > 0;
   html += `<div class="dash-summary-row" style="margin-bottom:20px">
     <div class="dash-kpi"><div class="dash-kpi-val" style="color:#15803D">${cVerified}</div><div class="dash-kpi-lbl">Modules vérifiés</div></div>
     <div class="dash-kpi"><div class="dash-kpi-val" style="color:#7B3FA0">${cNoEquiv}</div><div class="dash-kpi-lbl">Sans équivalence (Hors UE)</div></div>
-    <div class="dash-kpi"><div class="dash-kpi-val" style="color:${cToProcess>0?'#C03030':'#15803D'}">${cToProcess}</div><div class="dash-kpi-lbl">À traiter <span style="color:#9090a0">(${cSuggested} suggérés · ${cUnmapped} non mappés)</span></div></div>
+    <div class="dash-kpi" ${toProcessClickable ? `onclick="setPlanningMatchFilter('unmapped')" style="cursor:pointer;transition:transform 0.1s" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'" title="Cliquer pour filtrer sur les modules à traiter"` : ''}>
+      <div class="dash-kpi-val" style="color:${cToProcess>0?'#C03030':'#15803D'}">${cToProcess}</div>
+      <div class="dash-kpi-lbl">À traiter <span style="color:#9090a0">(${cSuggested} suggérés · ${cUnmapped} non mappés)</span>${toProcessClickable ? ' <span style="color:#9090a0;font-size:9px">↓ filtrer</span>' : ''}</div>
+    </div>
   </div>`;
 
   const btnStyle = (active) => `font-size:11px;padding:5px 12px;border-radius:8px;border:1.5px solid ${active?'#000':'var(--blanc2)'};background:${active?'#000':'var(--blanc-pur)'};color:${active?'#fff':'var(--gris-text)'};cursor:pointer;font-weight:600`;
