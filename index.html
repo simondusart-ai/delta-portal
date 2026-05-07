@@ -5788,7 +5788,7 @@ function renderAbsDashboard(cls) {
     const initials = (s.prenom[0]+s.nom[0]).toUpperCase();
     const hoursAbs = hoursAJ + hoursANJ;
     const pctAbs = totalHoursStu > 0 ? (hoursAbs / totalHoursStu) * 100 : 0;
-    const pctOver = pctAbs > 25;
+    const pctOver = pctAbs > 20;
     const absCell = hoursAbs > 0
       ? `<span style="color:#C03030;font-weight:700">${hoursAbs.toFixed(1)}h</span>`
       : '<span style="color:#c0c0c0">—</span>';
