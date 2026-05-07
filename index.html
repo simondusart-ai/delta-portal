@@ -1592,6 +1592,8 @@ tbody tr:hover td { background: var(--blanc); }
   </div>
 
   <div class="stu-body">
+    <div class="section-label">Récapitulatif</div>
+    <div id="stu-recap-container" style="margin-bottom:32px"></div>
     <div class="section-label">Mes modules</div>
     <div id="stu-modules-grid"></div>
     <div class="section-label">Mes documents</div>
@@ -1613,7 +1615,7 @@ tbody tr:hover td { background: var(--blanc); }
     </div>
   </div>
 
-  <!-- Calendrier absences (MCOM1 + B3 only) -->
+  <!-- Calendrier absences (toutes promos) -->
   <div id="stu-calendar-section" style="display:none">
     <div class="stu-body" style="padding-top:0">
       <div class="section-label">Mon calendrier de présences</div>
@@ -3749,8 +3751,8 @@ async function initStudent() {
       }
     }
   }
-  // Show calendar for B3 and MCOM1
-  if (s.annee === 3 || s.annee === 4 || s.annee === 5) {
+  // Show calendar for all promos (B1, B2, B3, MCOM1, MCOM2)
+  if (s.annee >= 1 && s.annee <= 5) {
     document.getElementById('stu-calendar-section').style.display = '';
     renderStudentCalendar(s);
   } else {
@@ -4309,6 +4311,50 @@ function renderStudentView() {
     'Other': '#D0D0D0'
   };
 
+  // ── Récapitulatif (un bloc par pilier / UE / Bloc) ──
+  let recapHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">';
+  PILIERS.forEach(pilier => {
+    const pilierMods = studentMods.filter(m => m.pilier === pilier);
+    if (pilierMods.length === 0) return;
+    const pa = getPilierAvg(s.id, pilier);
+    const color = PILIER_COLORS[pilier];
+    const label = PILIER_LABELS[pilier];
+    const shortLabel = label.split(' — ')[0]; // garde "Bloc 1" ou "Product Management"
+
+    let avgStr = '—';
+    let avgColor = '#9090a0';
+    let statusBadge = '';
+    if (pa) {
+      if (pa.count > 0 || pa.filled > 0) {
+        avgStr = pa.avg.toFixed(1);
+        avgColor = pa.avg >= 10 ? '#2D7A4A' : '#C03030';
+      }
+      if (pa.blocStatus === 'valide') statusBadge = '<span class="pilier-status validé">✓ Validé</span>';
+      else if (pa.blocStatus === 'rattrapage') statusBadge = '<span class="pilier-status rattrapage">↻ Rattrapage</span>';
+      else if (pa.blocStatus === 'en_cours') statusBadge = '<span class="pilier-status en-cours">⏳ En cours</span>';
+      else if (pa.count > 0) {
+        statusBadge = pa.avg >= 10
+          ? '<span class="pilier-status validé">✓ Validé</span>'
+          : '<span class="pilier-status rattrapage">↻ Rattrapage</span>';
+      }
+    }
+
+    recapHtml += `<div style="background:#fff;border:1.5px solid #e8e8e8;border-radius:14px;padding:14px 16px;position:relative">
+      <button onclick="showBlocDetail('${s.id}',null,'${pilier}')"
+        style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;font-size:14px;color:#9090a0;padding:4px;line-height:1"
+        title="Voir le détail des notes">🔍</button>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-right:24px">
+        <div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#444;line-height:1.2">${shortLabel}</div>
+      </div>
+      <div style="font-size:24px;font-weight:700;color:${avgColor};line-height:1">${avgStr}<span style="font-size:13px;color:#9090a0;font-weight:600">${avgStr !== '—' ? '/20' : ''}</span></div>
+      <div style="margin-top:8px;min-height:18px">${statusBadge}</div>
+    </div>`;
+  });
+  recapHtml += '</div>';
+  const recapEl = document.getElementById('stu-recap-container');
+  if (recapEl) recapEl.innerHTML = recapHtml;
+
   let html = '';
   PILIERS.forEach(pilier => {
     const pilierMods = studentMods.filter(m => m.pilier === pilier);
@@ -4530,7 +4576,7 @@ function renderStudentCalendar(s) {
   container.innerHTML=h;
 
   // ── Absence summary below calendar ──
-  const promoKey2  = s.annee === 3 ? 'B3' : s.annee === 5 ? 'MCOM2' : 'MCOM1';
+  const promoKey2 = ({1:'B1',2:'B2',3:'B3',4:'MCOM1',5:'MCOM2'})[s.annee] || 'B1';
   const classMods2 = MODULES.filter(m => m.promo === promoKey2);
   let totAJ = 0, totANJ = 0, hAJstu = 0, hANJstu = 0, totalHrs = 0;
   const ajMods = {}, anjMods = {};
@@ -4550,11 +4596,13 @@ function renderStudentCalendar(s) {
     let hs = '<div style="margin-top:20px">';
     hs += '<div style="font-size:13px;font-weight:700;color:var(--noir);margin-bottom:12px">Récapitulatif des absences</div>';
     hs += '<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:stretch">';
-    // Heures totales
-    hs += `<div style="background:#F6F6F2;border:1px solid #e0e0d8;border-radius:8px;padding:10px 16px;min-width:120px">
-      <div style="font-size:18px;font-weight:700;color:#000">${totalHrs.toFixed(1)}h</div>
-      <div style="font-size:11px;color:#6B6B6B;font-weight:600">Heures totales</div>
-    </div>`;
+    // Heures totales (caché pour les Bachelor 2 — planning encore incomplet)
+    if (s.annee !== 2) {
+      hs += `<div style="background:#F6F6F2;border:1px solid #e0e0d8;border-radius:8px;padding:10px 16px;min-width:120px">
+        <div style="font-size:18px;font-weight:700;color:#000">${totalHrs.toFixed(1)}h</div>
+        <div style="font-size:11px;color:#6B6B6B;font-weight:600">Heures totales</div>
+      </div>`;
+    }
     // Total heures absences (parent)
     hs += `<div style="background:#FCE4E4;border:1.5px solid #C03030;border-radius:8px;padding:10px 16px;min-width:140px;position:relative">
       <div style="font-size:18px;font-weight:700;color:#C03030">${hAbsTot.toFixed(1)}h</div>
