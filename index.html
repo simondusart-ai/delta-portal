@@ -4530,24 +4530,50 @@ function renderStudentCalendar(s) {
   // ── Absence summary below calendar ──
   const promoKey2  = s.annee === 3 ? 'B3' : s.annee === 5 ? 'MCOM2' : 'MCOM1';
   const classMods2 = MODULES.filter(m => m.promo === promoKey2);
-  let totAJ = 0, totANJ = 0, hAJstu = 0, hANJstu = 0;
+  let totAJ = 0, totANJ = 0, hAJstu = 0, hANJstu = 0, totalHrs = 0;
   const ajMods = {}, anjMods = {};
   classMods2.forEach(m => {
     (attendanceSessions[m.id]||[]).forEach(sess => {
       const key = m.id + '_' + sess.session_num + '_' + s.id;
       const status = attendanceData[key]?.status;
       const hrs = sess.session_hours || 0;
+      totalHrs += hrs;
       if (status === 'aj')  { totAJ++;  hAJstu  += hrs; ajMods[m.nom]  = (ajMods[m.nom]||0)  + hrs; }
       if (status === 'anj') { totANJ++; hANJstu += hrs; anjMods[m.nom] = (anjMods[m.nom]||0) + hrs; }
     });
   });
+  const hAbsTot = hAJstu + hANJstu;
 
   if (totAJ > 0 || totANJ > 0) {
     let hs = '<div style="margin-top:20px">';
     hs += '<div style="font-size:13px;font-weight:700;color:var(--noir);margin-bottom:12px">Récapitulatif des absences</div>';
-    hs += '<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">';
-    hs += `<div style="background:#FEF3C7;border:1px solid #d4c070;border-radius:8px;padding:10px 16px;min-width:120px"><div style="font-size:18px;font-weight:700;color:#92620A">${totAJ}</div><div style="font-size:11px;color:#92620A;font-weight:600">AJ — ${hAJstu>0?hAJstu.toFixed(1)+'h':'—'}</div></div>`;
-    hs += `<div style="background:#FEE2E2;border:1px solid #d4a0a0;border-radius:8px;padding:10px 16px;min-width:120px"><div style="font-size:18px;font-weight:700;color:#C03030">${totANJ}</div><div style="font-size:11px;color:#C03030;font-weight:600">ANJ — ${hANJstu>0?hANJstu.toFixed(1)+'h':'—'}</div></div>`;
+    hs += '<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:stretch">';
+    // Heures totales
+    hs += `<div style="background:#F6F6F2;border:1px solid #e0e0d8;border-radius:8px;padding:10px 16px;min-width:120px">
+      <div style="font-size:18px;font-weight:700;color:#000">${totalHrs.toFixed(1)}h</div>
+      <div style="font-size:11px;color:#6B6B6B;font-weight:600">Heures totales</div>
+    </div>`;
+    // Total heures absences (parent)
+    hs += `<div style="background:#FCE4E4;border:1.5px solid #C03030;border-radius:8px;padding:10px 16px;min-width:140px;position:relative">
+      <div style="font-size:18px;font-weight:700;color:#C03030">${hAbsTot.toFixed(1)}h</div>
+      <div style="font-size:11px;color:#C03030;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Total absences</div>
+    </div>`;
+    // AJ (sous-segment)
+    hs += `<div style="background:#FEF8E0;border:1px dashed #d4c070;border-radius:8px;padding:10px 16px;min-width:120px;position:relative">
+      <div style="position:absolute;top:8px;left:6px;font-size:13px;color:#C03030;font-weight:700">↳</div>
+      <div style="margin-left:14px">
+        <div style="font-size:16px;font-weight:700;color:#92620A">${hAJstu>0?hAJstu.toFixed(1)+'h':'—'}</div>
+        <div style="font-size:11px;color:#92620A;font-weight:600">AJ <span style="color:#9090a0">(${totAJ})</span></div>
+      </div>
+    </div>`;
+    // ANJ (sous-segment)
+    hs += `<div style="background:#FFF0F0;border:1px dashed #d4a0a0;border-radius:8px;padding:10px 16px;min-width:120px;position:relative">
+      <div style="position:absolute;top:8px;left:6px;font-size:13px;color:#C03030;font-weight:700">↳</div>
+      <div style="margin-left:14px">
+        <div style="font-size:16px;font-weight:700;color:#C03030">${hANJstu>0?hANJstu.toFixed(1)+'h':'—'}</div>
+        <div style="font-size:11px;color:#C03030;font-weight:600">ANJ <span style="color:#9090a0">(${totANJ})</span></div>
+      </div>
+    </div>`;
     hs += '</div>';
     if (Object.keys(anjMods).length > 0) {
       hs += '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#C03030;margin-bottom:6px">Absences non justifiées par module</div>';
