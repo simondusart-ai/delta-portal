@@ -3884,7 +3884,8 @@ function showBlocDetail(studentId, cls, singlePilier) {
 
   // Helper: get note display for a module grade
   function getNoteDisplay(g, evalType) {
-    if (!g) return { str: '—', color: '#c0c0c0' };
+    const PENDING = { str: 'En attente', color: '#2563EB' };
+    if (!g) return PENDING;
     if (g.absence === 'AJ') return { str: 'AJ', color: '#92620A' };
     if (g.absence === 'ANJ') return { str: 'ANJ (0)', color: '#C03030' };
     if (evalType === 'SOUTENANCE' || evalType === 'ORAL_BLANC') {
@@ -3892,14 +3893,14 @@ function showBlocDetail(studentId, cls, singlePilier) {
       if (acq === true) return { str: '✓ Acquis', color: '#2D7A4A' };
       if (acq === false) return { str: '✕ Non acquis', color: '#C03030' };
       if (g.valide) return { str: 'Val.', color: '#2D7A4A' };
-      return { str: '—', color: '#c0c0c0' };
+      return PENDING;
     }
     if (g.note !== '' && g.note !== undefined && g.note !== null) {
       const n = parseFloat(g.note);
       return { str: n.toFixed(2), color: n >= 10 ? '#2D7A4A' : '#C03030' };
     }
     if (g.valide) return { str: 'Val.', color: '#2D7A4A' };
-    return { str: '—', color: '#c0c0c0' };
+    return PENDING;
   }
 
   // Helper: render a group of modules with subtotal
