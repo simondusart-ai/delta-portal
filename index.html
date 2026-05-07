@@ -5740,12 +5740,13 @@ function renderAbsDashboard(cls) {
   const _absSortState = absSortState[cls] || {col:'name', dir:1};
   const absIcon = (col) => _absSortState.col === col ? (_absSortState.dir === 1 ? ' ↑' : ' ↓') : ' ⇅';
   html += `<th data-abs-sort-cls="${cls}" data-abs-sort-col="name" style="cursor:pointer;user-select:none">Étudiant${absIcon('name')}</th>`;
-  html += '<th style="color:#2D7A4A">Présences</th>';
   html += '<th style="color:#2D7A4A">H. présences</th>';
   html += `<th data-abs-sort-cls="${cls}" data-abs-sort-col="aj" style="color:#92620A;cursor:pointer;user-select:none">AJ${absIcon('aj')}</th>`;
   html += '<th style="color:#92620A">H. AJ</th>';
   html += `<th data-abs-sort-cls="${cls}" data-abs-sort-col="anj" style="color:#C03030;cursor:pointer;user-select:none">ANJ${absIcon('anj')}</th>`;
   html += '<th style="color:#C03030">H. ANJ</th>';
+  html += `<th data-abs-sort-cls="${cls}" data-abs-sort-col="absences" style="color:#C03030;cursor:pointer;user-select:none">H. Absences${absIcon('absences')}</th>`;
+  html += `<th data-abs-sort-cls="${cls}" data-abs-sort-col="percent" style="color:#C03030;cursor:pointer;user-select:none">% Absence${absIcon('percent')}</th>`;
   html += `<th data-abs-sort-cls="${cls}" data-abs-sort-col="total" style="color:#9090a0;cursor:pointer;user-select:none">H. totales${absIcon('total')}</th>`;
   html += '</tr></thead><tbody>';
 
@@ -5769,32 +5770,45 @@ function renderAbsDashboard(cls) {
   });
   const _absSrt = absSortState[cls] || {col:'name', dir:1};
   studentStats.sort((a,b) => {
-    if (_absSrt.col==='name')  return a.s.nom.localeCompare(b.s.nom) * _absSrt.dir;
-    if (_absSrt.col==='aj')    return (b.aj - a.aj) * _absSrt.dir;
-    if (_absSrt.col==='anj')   return (b.anj - a.anj) * _absSrt.dir;
-    if (_absSrt.col==='total') return (b.totalHoursStu - a.totalHoursStu) * _absSrt.dir;
+    if (_absSrt.col==='name')     return a.s.nom.localeCompare(b.s.nom) * _absSrt.dir;
+    if (_absSrt.col==='aj')       return (b.aj - a.aj) * _absSrt.dir;
+    if (_absSrt.col==='anj')      return (b.anj - a.anj) * _absSrt.dir;
+    if (_absSrt.col==='absences') return ((b.hoursAJ+b.hoursANJ) - (a.hoursAJ+a.hoursANJ)) * _absSrt.dir;
+    if (_absSrt.col==='percent') {
+      const pa = a.totalHoursStu > 0 ? (a.hoursAJ+a.hoursANJ)/a.totalHoursStu : 0;
+      const pb = b.totalHoursStu > 0 ? (b.hoursAJ+b.hoursANJ)/b.totalHoursStu : 0;
+      return (pb - pa) * _absSrt.dir;
+    }
+    if (_absSrt.col==='total')    return (b.totalHoursStu - a.totalHoursStu) * _absSrt.dir;
     return 0;
   });
 
   studentStats.forEach(({s, present, aj, anj, hoursPresent, hoursAJ, hoursANJ, totalHoursStu}, idx) => {
-    let absent = 0;
-    // hoursAJ, hoursANJ already set from precomputed stats, hoursANJ = 0;
-
-    // stats pre-computed above
-
     const avatarC = avatarColors[idx] || '#C895EF';
     const initials = (s.prenom[0]+s.nom[0]).toUpperCase();
+    const hoursAbs = hoursAJ + hoursANJ;
+    const pctAbs = totalHoursStu > 0 ? (hoursAbs / totalHoursStu) * 100 : 0;
+    const pctOver = pctAbs > 25;
+    const absCell = hoursAbs > 0
+      ? `<span style="color:#C03030;font-weight:700">${hoursAbs.toFixed(1)}h</span>`
+      : '<span style="color:#c0c0c0">—</span>';
+    const pctCell = totalHoursStu > 0
+      ? (pctOver
+          ? `<span style="background:#FEE2E2;color:#C03030;font-weight:700;padding:2px 8px;border-radius:9px">${pctAbs.toFixed(1)}%</span>`
+          : `<span style="color:#6B6B6B;font-weight:600">${pctAbs.toFixed(1)}%</span>`)
+      : '<span style="color:#c0c0c0">—</span>';
     html += `<tr>
       <td><div class="student-cell" style="cursor:pointer" onclick="showAbsDetail('${s.id}','${cls}')">
         <div class="avatar" style="background:${avatarC}">${initials}</div>
         <strong style="color:var(--noir);text-decoration:underline;text-underline-offset:2px">${s.prenom} ${s.nom}</strong>
       </div></td>
-      <td><span style="color:#2D7A4A;font-weight:700">${present}</span></td>
       <td>${hoursPresent > 0 ? `<span style="color:#2D7A4A;font-weight:600">${hoursPresent.toFixed(1)}h</span>` : '<span style="color:#c0c0c0">—</span>'}</td>
       <td>${aj > 0 ? `<span class="dash-badge aj">${aj}</span>` : '<span style="color:#c0c0c0">—</span>'}</td>
       <td>${hoursAJ > 0 ? `<span style="color:#92620A;font-weight:600">${hoursAJ.toFixed(1)}h</span>` : '<span style="color:#c0c0c0">—</span>'}</td>
       <td>${anj > 0 ? `<span class="dash-badge anj">${anj}</span>` : '<span style="color:#c0c0c0">—</span>'}</td>
       <td>${hoursANJ > 0 ? `<span style="color:#C03030;font-weight:600">${hoursANJ.toFixed(1)}h</span>` : '<span style="color:#c0c0c0">—</span>'}</td>
+      <td>${absCell}</td>
+      <td>${pctCell}</td>
       <td>${totalHoursStu > 0 ? `<span style="color:#6B6B6B;font-weight:600">${totalHoursStu.toFixed(1)}h</span>` : '<span style="color:#c0c0c0">—</span>'}</td>
     </tr>`;
   });
