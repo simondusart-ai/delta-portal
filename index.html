@@ -2885,6 +2885,7 @@ async function initAdmin() {
   await loadStudentPasswords();
   await loadExtraModules();
   await loadAirtableMappings();
+  await loadBulletinComments();
   hideLoader();
   renderStudentsTab();
   renderBulletinsGrid();
@@ -5068,6 +5069,77 @@ async function deleteAirtableMapping(activity, promo) {
   return true;
 }
 
+// ── Commentaires généraux de bulletin ──────────────────────────────
+let bulletinComments = {}; // { studentId: commentaire }
+
+async function loadBulletinComments() {
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/bulletin_comments?select=*', {
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
+    });
+    if (!r.ok) return;
+    const data = await r.json();
+    bulletinComments = {};
+    data.forEach(b => { bulletinComments[b.student_id] = b.commentaire || ''; });
+  } catch (e) { console.warn('[bulletin_comments] load failed:', e); }
+}
+
+async function saveBulletinComment(studentId, text) {
+  const payload = {
+    student_id: studentId,
+    commentaire: text || '',
+    updated_at: new Date().toISOString()
+  };
+  const r = await fetch(SB_URL + '/rest/v1/bulletin_comments?on_conflict=student_id', {
+    method: 'POST',
+    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY,
+      'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok) { showError("Erreur d'enregistrement du commentaire"); return false; }
+  bulletinComments[studentId] = text || '';
+  return true;
+}
+
+function showBulletinCommentModal(studentId) {
+  const student = REAL_STUDENTS.find(s => s.id === studentId);
+  if (!student) return;
+  const existing = bulletinComments[studentId] || '';
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:60px;overflow-y:auto';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:28px;width:600px;max-width:95vw">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <div style="font-size:16px;font-weight:700;color:#000">${student.prenom} ${student.nom}</div>
+          <div style="font-size:12px;color:#9090a0;margin-top:2px">Commentaire général du bulletin · ${student.promo}</div>
+        </div>
+        <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9090a0;padding:4px 8px">✕</button>
+      </div>
+      <textarea id="bulletin-comment-textarea" rows="8"
+        placeholder="Saisissez le commentaire général qui apparaîtra sur le bulletin PDF…"
+        style="width:100%;padding:12px;border:1.5px solid #e8e8e8;border-radius:10px;font-family:inherit;font-size:13px;line-height:1.5;color:#333;resize:vertical;box-sizing:border-box">${existing.replace(/</g,'&lt;')}</textarea>
+      <div style="font-size:11px;color:#9090a0;margin-top:8px">${existing ? 'Dernière modification enregistrée' : 'Aucun commentaire enregistré pour le moment'}</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+        <button onclick="this.closest('[style*=fixed]').remove()" style="background:#fff;border:1.5px solid #e8e8e8;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;color:#666;font-weight:600">Annuler</button>
+        <button id="bulletin-comment-save" style="background:#000;border:none;border-radius:8px;padding:8px 18px;font-size:13px;cursor:pointer;color:#fff;font-weight:600">Enregistrer</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.getElementById('bulletin-comment-save').onclick = async () => {
+    const text = document.getElementById('bulletin-comment-textarea').value.trim();
+    showLoader('Enregistrement…');
+    const ok = await saveBulletinComment(studentId, text);
+    hideLoader();
+    if (ok) {
+      overlay.remove();
+      renderDashboard();
+    }
+  };
+}
+
 // Charge les modules "Hors UE" depuis Supabase et les fusionne dans MODULES
 async function loadExtraModules() {
   try {
@@ -6650,6 +6722,7 @@ function renderDashboard() {
       if (hasMods) html += `<th>${pilierLabels[p]}</th>`;
     });
     html += '<th style="color:#9090a0">Manquantes</th>';
+    html += '<th>Commentaire général</th>';
     html += '</tr></thead><tbody>';
 
     // Apply sort
@@ -6725,8 +6798,23 @@ function renderDashboard() {
         </td>`;
       });
 
+      // Commentaire général : badge selon état + nb de notes manquantes
+      const hasComment = !!(bulletinComments[s.id] && bulletinComments[s.id].trim());
+      let commentCell;
+      const baseStyle = 'display:inline-block;padding:3px 10px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px';
+      if (hasComment) {
+        commentCell = `<button onclick="showBulletinCommentModal('${s.id}')" title="Voir / modifier le commentaire" style="${baseStyle};background:#DCFCE7;color:#15803D;border:none;cursor:pointer">✓ Saisi</button>`;
+      } else if (missing === 0) {
+        commentCell = `<button onclick="showBulletinCommentModal('${s.id}')" title="Saisir le commentaire général" style="${baseStyle};background:#FEE2E2;color:#C03030;border:none;cursor:pointer">À saisir</button>`;
+      } else if (missing < 5) {
+        commentCell = `<button onclick="showBulletinCommentModal('${s.id}')" title="Pré-rédiger le commentaire général" style="${baseStyle};background:#DCFCE7;color:#15803D;border:none;cursor:pointer">Saisie possible</button>`;
+      } else {
+        commentCell = `<span style="${baseStyle};background:#F0F0F0;color:#9090a0" title="Saisie impossible tant que plus de 4 notes manquent">Saisie impossible</span>`;
+      }
+
       html += `
         <td>${missing > 0 ? `<span class="dash-badge missing">${missing}</span>` : '<span style="color:#2D7A4A;font-size:13px">✓</span>'}</td>
+        <td>${commentCell}</td>
       </tr>`;
     });
 
@@ -8601,16 +8689,38 @@ function generatePDF(student) {
   // (signature placed after commentaire général below)
   y += 8;
 
-  // Commentaire général box
+  // Commentaire général box — texte enregistré (ou "À venir" par défaut)
+  const commentGeneral = (bulletinComments[student.id] || '').trim();
+  doc.setFontSize(8);
+  const commentLinesPdf = commentGeneral
+    ? doc.splitTextToSize(commentGeneral, cW - 6)
+    : ['À venir'];
+  const commentBoxH = Math.max(20, 10 + commentLinesPdf.length * 4.2);
+
+  // New page if commentaire box would overflow
+  if (y + commentBoxH + 18 > PAGE_BOTTOM) {
+    drawFooter();
+    doc.addPage();
+    pageNum++;
+    drawHeader(pageNum);
+    y = 42;
+  }
+
   doc.setFillColor(245,245,243);
-  doc.roundedRect(M, y, cW, 20, 2, 2, 'FD');
+  doc.roundedRect(M, y, cW, commentBoxH, 2, 2, 'FD');
   doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(80);
   doc.text('Commentaire général :', M+3, y+7);
-  doc.setFont('helvetica','italic'); doc.setFontSize(7.5); doc.setTextColor(160);
-  doc.text('À venir', M+3, y+14);
+  if (commentGeneral) {
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(40);
+  } else {
+    doc.setFont('helvetica','italic'); doc.setFontSize(7.5); doc.setTextColor(160);
+  }
+  commentLinesPdf.forEach((line, li) => {
+    doc.text(line, M+3, y + 13 + li * 4.2);
+  });
 
   // Signature bottom-right, clearly below the commentaire box
-  y += 28;
+  y += commentBoxH + 8;
   try {
     doc.addImage('data:image/png;base64,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', 'PNG', M+cW-SIG_W, y, SIG_W, SIG_H);
   } catch(e) {}
