@@ -8384,8 +8384,9 @@ function generatePDF(student) {
   const COL_COMMENT = cW - COL_PILIER - COL_MODULE - COL_NOTE; // ~70mm
 
   // Get modules for this student's promo only
+  // Hors UE (isExtra) exclus : non notés, présence uniquement
   const studentMods = getModulesForStudent(student).filter(m =>
-    m.evalType !== 'ORAL_BLANC'
+    m.evalType !== 'ORAL_BLANC' && !m.isExtra
   );
 
   // Helper: split text into lines fitting a given width
