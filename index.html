@@ -4160,6 +4160,78 @@ function showBlocDetail(studentId, cls, singlePilier) {
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
+function showMissingNotesDetail(cls) {
+  const promoMap = {'b1':'B1','b2':'B2','b3':'B3','mcom1':'MCOM1','mcom2':'MCOM2'};
+  const mcom1SessionEl = document.getElementById('mcom1-session-select');
+  const mcom1Session = mcom1SessionEl ? mcom1SessionEl.value : 'current';
+  const isMCOM1Prev = cls === 'mcom1' && mcom1Session === 'prev';
+  const annee = cls === 'b1' ? 1 : cls === 'b2' ? 2 : cls === 'b3' ? 3
+    : cls === 'mcom1' ? (isMCOM1Prev ? 5 : 4) : 5;
+  const students = isMCOM1Prev
+    ? REAL_STUDENTS.filter(s => s.annee === 5)
+    : REAL_STUDENTS.filter(s => s.annee === annee);
+  const classMods = MODULES.filter(m => m.promo === promoMap[cls]);
+
+  const missingByStudent = [];
+  students.forEach(s => {
+    const missing = [];
+    classMods.forEach(m => {
+      const g = grades[s.id + '_' + m.id] || {};
+      if (g.absence === 'AJ' || g.absence === 'ANJ') return;
+      if (m.evalType === 'SOUTENANCE' && (m.promo === 'MCOM1' || m.promo === 'MCOM2')) return;
+      if (m.isExtra) return;
+      if (!g.note && !g.valide) missing.push(m);
+    });
+    if (missing.length > 0) missingByStudent.push({ student: s, missing });
+  });
+
+  missingByStudent.sort((a, b) =>
+    b.missing.length - a.missing.length || a.student.nom.localeCompare(b.student.nom));
+
+  const totalMissing = missingByStudent.reduce((acc, x) => acc + x.missing.length, 0);
+
+  let content = '';
+  if (missingByStudent.length === 0) {
+    content = '<div style="color:#9090a0;font-style:italic;text-align:center;padding:24px">Aucune note manquante 🎉</div>';
+  } else {
+    missingByStudent.forEach(({ student: s, missing }) => {
+      let modRows = '';
+      missing.forEach(m => {
+        const tag = m.pilier || m.ueName || '';
+        modRows += `<tr style="border-top:1px solid #f0f0f0">
+          <td style="padding:5px 0 5px 12px;color:#555;font-size:11px;line-height:1.3">${m.nom}</td>
+          <td style="padding:5px 0;text-align:right;color:#9090a0;font-size:10px;white-space:nowrap;text-transform:uppercase;letter-spacing:0.4px">${tag}</td>
+        </tr>`;
+      });
+      content += `<div style="margin-bottom:14px;padding:14px 16px;background:#f8f8f6;border-radius:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div style="font-size:13px;font-weight:700;color:#000">${s.prenom} ${s.nom}</div>
+          <span style="font-size:11px;font-weight:700;color:#9090a0">${missing.length} manquante${missing.length > 1 ? 's' : ''}</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse">${modRows}</table>
+      </div>`;
+    });
+  }
+
+  const promoLabel = promoMap[cls] + (isMCOM1Prev ? ' (session précédente)' : '');
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:28px;width:560px;max-width:95vw;max-height:85vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div>
+          <div style="font-size:16px;font-weight:700;color:#000">Notes manquantes</div>
+          <div style="font-size:12px;color:#9090a0;margin-top:2px">${promoLabel} · ${totalMissing} note${totalMissing > 1 ? 's' : ''} en attente · ${missingByStudent.length} étudiant${missingByStudent.length > 1 ? 's' : ''}</div>
+        </div>
+        <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9090a0;padding:4px 8px">✕</button>
+      </div>
+      ${content}
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
 function getPilierAvg(studentId, pilier) {
   const student = STUDENTS.find(s => s.id === studentId);
   // MCOM students: delegate entirely to getMCOMBlocAvg
@@ -6553,6 +6625,8 @@ function renderDashboard() {
         else if (g.absence === 'ANJ') totalANJ++;
         // MCOM oral (SOUTENANCE): Acquis/Non acquis only — never count as missing note
         else if (m.evalType === 'SOUTENANCE' && (m.promo === 'MCOM1' || m.promo === 'MCOM2')) { /* skip */ }
+        // Hors UE : modules non notés (suivi de présence uniquement)
+        else if (m.isExtra) { /* skip */ }
         else if (!g.note && !g.valide) totalMissing++;
       });
     });
@@ -6561,7 +6635,7 @@ function renderDashboard() {
       <div class="dash-kpi"><div class="dash-kpi-val">${students.length}</div><div class="dash-kpi-lbl">Étudiants</div></div>
       <div class="dash-kpi"><div class="dash-kpi-val" style="color:#92620A">${totalAJ}</div><div class="dash-kpi-lbl">Absences justifiées</div></div>
       <div class="dash-kpi"><div class="dash-kpi-val" style="color:#C03030">${totalANJ}</div><div class="dash-kpi-lbl">Absences non justifiées</div></div>
-      <div class="dash-kpi"><div class="dash-kpi-val" style="color:#9090a0">${totalMissing}</div><div class="dash-kpi-lbl">Notes manquantes</div></div>
+      <div class="dash-kpi"><div class="dash-kpi-val" style="color:#9090a0;display:flex;align-items:baseline;gap:8px">${totalMissing}${totalMissing > 0 ? `<button onclick="showMissingNotesDetail('${cls}')" style="background:none;border:none;cursor:pointer;font-size:14px;color:#9090a0;padding:0;line-height:1" title="Voir le détail des notes manquantes">🔍</button>` : ''}</div><div class="dash-kpi-lbl">Notes manquantes</div></div>
     `;
     html += '</div>';
 
