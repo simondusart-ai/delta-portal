@@ -6671,12 +6671,14 @@ function renderDashboard() {
       const avgColor = filled > 0 ? (avg >= 14 ? '#7B3FA0' : avg >= 10 ? '#2D7A4A' : '#C03030') : '#9090a0';
       const mention = filled > 0 ? getMention(avg) : '';
 
-      // Count AJ/ANJ/missing for this student
+      // Count AJ/ANJ/missing for this student (mêmes exclusions que le KPI global)
       let aj=0, anj=0, missing=0;
       classMods.forEach(m => {
         const g = grades[s.id+'_'+m.id] || {};
         if (g.absence === 'AJ') aj++;
         else if (g.absence === 'ANJ') anj++;
+        else if (m.evalType === 'SOUTENANCE' && (m.promo === 'MCOM1' || m.promo === 'MCOM2')) { /* skip */ }
+        else if (m.isExtra) { /* skip */ }
         else if (!g.note && !g.valide) missing++;
       });
 
