@@ -5101,6 +5101,78 @@ async function saveBulletinComment(studentId, text) {
   return true;
 }
 
+// Construit le contexte structuré envoyé au LLM pour générer le commentaire
+function buildBulletinLLMContext(student) {
+  const studentMods = getModulesForStudent(student).filter(m =>
+    m.evalType !== 'ORAL_BLANC' && !m.isExtra
+  );
+  const modules = studentMods.map(m => {
+    const g = grades[student.id + '_' + m.id] || {};
+    const noteVal = (g.note !== undefined && g.note !== '' && g.note !== null)
+      ? parseFloat(g.note) : null;
+    return {
+      nom: m.nom,
+      pilier: m.pilier,
+      evalType: m.evalType || 'CC',
+      note: (noteVal !== null && Number.isFinite(noteVal)) ? noteVal : null,
+      absence: g.absence || null,
+      valide: !!g.valide,
+      commentaire: g.commentaire || ''
+    };
+  });
+
+  // Heures de présence sur l'ensemble des modules de l'étudiant (Hors UE inclus pour l'assiduité)
+  let ajHours = 0, anjHours = 0, totalHours = 0;
+  const allMods = getModulesForStudent(student);
+  allMods.forEach(m => {
+    (attendanceSessions[m.id] || []).forEach(sess => {
+      const h = sess.session_hours || 0;
+      totalHours += h;
+      const key = m.id + '_' + sess.session_num + '_' + student.id;
+      const status = attendanceData[key]?.status;
+      if (status === 'aj') ajHours += h;
+      else if (status === 'anj') anjHours += h;
+    });
+  });
+  const totalAbsence = ajHours + anjHours;
+  const absencePct = totalHours > 0 ? (totalAbsence / totalHours) * 100 : 0;
+
+  return {
+    student: { nom: student.nom, prenom: student.prenom, promo: student.promo, annee: student.annee },
+    modules,
+    attendance: { totalHours, ajHours, anjHours, totalAbsence, absencePct }
+  };
+}
+
+// Taux de conversion USD → EUR (statique, ajustable si besoin)
+const USD_TO_EUR = 0.92;
+
+// Appelle l'edge function pour générer un commentaire selon un ton
+// Renvoie { text, usage } ou null en cas d'erreur
+async function generateBulletinComment(studentId, tone) {
+  const student = REAL_STUDENTS.find(s => s.id === studentId);
+  if (!student) return null;
+  const payload = buildBulletinLLMContext(student);
+  payload.tone = tone;
+  try {
+    const r = await fetch(SB_URL + '/functions/v1/generate-bulletin-comment', {
+      method: 'POST',
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) {
+      const detail = await r.text();
+      showError('Erreur génération IA : ' + detail);
+      return null;
+    }
+    const data = await r.json();
+    return { text: (data.commentaire || '').trim(), usage: data.usage || null };
+  } catch (e) {
+    showError('Erreur réseau : ' + e.message);
+    return null;
+  }
+}
+
 function showBulletinCommentModal(studentId) {
   const student = REAL_STUDENTS.find(s => s.id === studentId);
   if (!student) return;
@@ -5108,8 +5180,9 @@ function showBulletinCommentModal(studentId) {
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:60px;overflow-y:auto';
+  const toneBtnStyle = 'background:#fff;border:1.5px solid #e8e8e8;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;color:#444;font-weight:600;transition:all 0.15s';
   overlay.innerHTML = `
-    <div style="background:#fff;border-radius:16px;padding:28px;width:600px;max-width:95vw">
+    <div style="background:#fff;border-radius:16px;padding:28px;width:640px;max-width:95vw">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
           <div style="font-size:16px;font-weight:700;color:#000">${student.prenom} ${student.nom}</div>
@@ -5117,8 +5190,24 @@ function showBulletinCommentModal(studentId) {
         </div>
         <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9090a0;padding:4px 8px">✕</button>
       </div>
+
+      <div style="background:#F8F8F6;border:1px solid #E8E8E8;border-radius:10px;padding:12px 14px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#666">✨ Aide à la rédaction (Claude)</div>
+          <button data-tone="bienveillant" class="ia-tone-btn" style="${toneBtnStyle}">😊 Bienveillant</button>
+          <button data-tone="neutre" class="ia-tone-btn" style="${toneBtnStyle}">😐 Neutre</button>
+          <button data-tone="dur" class="ia-tone-btn" style="${toneBtnStyle}">😠 Dur</button>
+        </div>
+        <div id="ia-help-cost" style="font-size:11px;color:#9090a0;margin-top:8px">
+          💶 Coût estimé : <strong>~€0.002</strong> par génération (Claude Haiku 4.5)
+        </div>
+        <div id="ia-help-status" style="font-size:11px;color:#9090a0;margin-top:4px;font-style:italic">
+          Synthèse basée sur les notes, commentaires et présence. Le texte généré est modifiable avant enregistrement.
+        </div>
+      </div>
+
       <textarea id="bulletin-comment-textarea" rows="8"
-        placeholder="Saisissez le commentaire général qui apparaîtra sur le bulletin PDF…"
+        placeholder="Saisissez le commentaire général qui apparaîtra sur le bulletin PDF, ou cliquez sur un ton pour générer un brouillon…"
         style="width:100%;padding:12px;border:1.5px solid #e8e8e8;border-radius:10px;font-family:inherit;font-size:13px;line-height:1.5;color:#333;resize:vertical;box-sizing:border-box">${existing.replace(/</g,'&lt;')}</textarea>
       <div style="font-size:11px;color:#9090a0;margin-top:8px">${existing ? 'Dernière modification enregistrée' : 'Aucun commentaire enregistré pour le moment'}</div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
@@ -5128,6 +5217,36 @@ function showBulletinCommentModal(studentId) {
     </div>`;
   document.body.appendChild(overlay);
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  // Boutons IA
+  overlay.querySelectorAll('.ia-tone-btn').forEach(btn => {
+    btn.onclick = async () => {
+      const tone = btn.dataset.tone;
+      const status = document.getElementById('ia-help-status');
+      const cost = document.getElementById('ia-help-cost');
+      const buttons = overlay.querySelectorAll('.ia-tone-btn');
+      buttons.forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+      status.textContent = '⏳ Génération en cours…';
+      status.style.color = '#666';
+      const result = await generateBulletinComment(studentId, tone);
+      buttons.forEach(b => { b.disabled = false; b.style.opacity = '1'; });
+      if (result && result.text) {
+        document.getElementById('bulletin-comment-textarea').value = result.text;
+        status.textContent = '✓ Brouillon généré (' + tone + ') — modifiable avant enregistrement';
+        status.style.color = '#15803D';
+        if (result.usage) {
+          const { input_tokens, output_tokens, cost_usd } = result.usage;
+          const costEur = (cost_usd || 0) * USD_TO_EUR;
+          cost.innerHTML = `💶 Coût réel : <strong>€${costEur.toFixed(4)}</strong> ` +
+            `<span style="color:#c0c0c0">(${input_tokens} in + ${output_tokens} out tokens)</span>`;
+        }
+      } else {
+        status.textContent = '⚠ Échec de génération';
+        status.style.color = '#C03030';
+      }
+    };
+  });
+
   document.getElementById('bulletin-comment-save').onclick = async () => {
     const text = document.getElementById('bulletin-comment-textarea').value.trim();
     showLoader('Enregistrement…');
