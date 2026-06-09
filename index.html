@@ -1605,7 +1605,7 @@ tbody tr:hover td { background: var(--blanc); }
           <div class="doc-title">Bulletin de notes — 2025/2026 <span id="stu-bl-status" style="margin-left:6px;vertical-align:middle"></span></div>
           <div class="doc-sub" id="stu-bl-info">Bachelor · Delta Business School · <span id="stu-bl-avg-doc">—</span> · <span id="stu-bl-mention-doc">—</span></div>
         </div>
-        <button class="dl-btn-main" onclick="downloadBulletin()" style="flex-shrink:0">
+        <button id="stu-bl-download-btn" class="dl-btn-main" onclick="downloadBulletin()" style="flex-shrink:0">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
           Télécharger PDF
         </button>
@@ -4343,27 +4343,35 @@ function renderStudentView() {
 
   // Badge de finalisation du bulletin (notes manquantes + commentaire général)
   const blStatusEl = document.getElementById('stu-bl-status');
+  const blDownloadBtn = document.getElementById('stu-bl-download-btn');
+  const bulletinDisabledIds = ['S08','S10'];
+  const isBulletinDisabled = bulletinDisabledIds.includes(s.id);
+  if (blDownloadBtn) blDownloadBtn.style.display = isBulletinDisabled ? 'none' : '';
   if (blStatusEl) {
-    const checkMods = getModulesForStudent(s).filter(m =>
-      !m.isExtra
-      && m.evalType !== 'ORAL_BLANC'
-      && !(m.evalType === 'SOUTENANCE' && (m.promo === 'MCOM1' || m.promo === 'MCOM2'))
-    );
-    let missing = 0;
-    checkMods.forEach(m => {
-      const g = grades[s.id + '_' + m.id] || {};
-      if (g.absence === 'AJ' || g.absence === 'ANJ') return;
-      if (!g.note && !g.valide) missing++;
-    });
-    const hasComment = !!(bulletinComments[s.id] && bulletinComments[s.id].trim());
-    const baseStyle = 'display:inline-block;padding:3px 10px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px';
-    if (missing === 0 && hasComment) {
-      blStatusEl.innerHTML = `<span style="${baseStyle};background:#DCFCE7;color:#15803D" title="Toutes les notes sont saisies et le commentaire général est rédigé">✓ Complet</span>`;
+    if (isBulletinDisabled) {
+      blStatusEl.innerHTML = `<span style="display:inline-block;padding:3px 10px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0.3px;background:#FEE2E2;color:#B91C1C">Merci de contacter l'équipe pédagogique</span>`;
     } else {
-      const reasons = [];
-      if (missing > 0) reasons.push(`${missing} note${missing>1?'s':''} en attente`);
-      if (!hasComment) reasons.push('commentaire général à rédiger');
-      blStatusEl.innerHTML = `<span style="${baseStyle};background:#FEF3C7;color:#92620A" title="${reasons.join(' · ')}">⏳ En finalisation</span>`;
+      const checkMods = getModulesForStudent(s).filter(m =>
+        !m.isExtra
+        && m.evalType !== 'ORAL_BLANC'
+        && !(m.evalType === 'SOUTENANCE' && (m.promo === 'MCOM1' || m.promo === 'MCOM2'))
+      );
+      let missing = 0;
+      checkMods.forEach(m => {
+        const g = grades[s.id + '_' + m.id] || {};
+        if (g.absence === 'AJ' || g.absence === 'ANJ') return;
+        if (!g.note && !g.valide) missing++;
+      });
+      const hasComment = !!(bulletinComments[s.id] && bulletinComments[s.id].trim());
+      const baseStyle = 'display:inline-block;padding:3px 10px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px';
+      if (missing === 0 && hasComment) {
+        blStatusEl.innerHTML = `<span style="${baseStyle};background:#DCFCE7;color:#15803D" title="Toutes les notes sont saisies et le commentaire général est rédigé">✓ Complet</span>`;
+      } else {
+        const reasons = [];
+        if (missing > 0) reasons.push(`${missing} note${missing>1?'s':''} en attente`);
+        if (!hasComment) reasons.push('commentaire général à rédiger');
+        blStatusEl.innerHTML = `<span style="${baseStyle};background:#FEF3C7;color:#92620A" title="${reasons.join(' · ')}">⏳ En finalisation</span>`;
+      }
     }
   }
 
