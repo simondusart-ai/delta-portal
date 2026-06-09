@@ -1,1 +1,33 @@
+# --- Backups / anciennes versions du portail ---
 delta_portal_v*.html
+*.bak
+*.old
+
+# --- Secrets (ne JAMAIS committer) ---
+.env
+.env.*
+*.key
+*.pem
+secrets.json
+supabase/.env
+supabase/.temp/
+supabase/.branches/
+
+# --- Dépendances ---
+node_modules/
+
+# --- Fichiers temporaires / logs ---
+*.log
+*.tmp
+*~
+~$*
+
+# --- Configs locales d'éditeur / IDE ---
+.vscode/
+.idea/
+*.code-workspace
+
+# --- Fichiers système OS ---
+Thumbs.db
+Desktop.ini
+.DS_Store
