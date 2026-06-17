@@ -2034,6 +2034,7 @@ let MODULES = [
   {id:'MC1-B2-9',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:'Cold call & Automatisation',ref:'Techniques et prospection commerciales',heures:16,promo:'MCOM1',evalType:'CC'},
   {id:'MC1-B2-10',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:'Business in English (Y1)',ref:'Anglais',heures:30,promo:'MCOM1',evalType:'CC'},
   {id:'MC1-B2-C1',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:"C2 — Partie 1 : Élaboration d'un PAC",ref:'',heures:0,promo:'MCOM1',evalType:'CERTIF',isCertif:true},
+  {id:'MC1-B2-ORAL',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:"Oral fin de bloc 2 - Plan d'actions commerciales",ref:'',heures:0,promo:'MCOM1',evalType:'SOUTENANCE',isSoutenance:true,nbCompetences:6},
   // BLOC 3 — MCOM1
   {id:'MC1-B3-1',ue:'BLOC3',ueName:"Management équipe & réseau",pilier:'BLOC 3',nom:'Fixer et atteindre ses objectifs',ref:"Management d'entreprise",heures:10,promo:'MCOM1',evalType:'CC'},
   {id:'MC1-B3-2',ue:'BLOC3',ueName:"Management équipe & réseau",pilier:'BLOC 3',nom:'Résoudre des conflits',ref:"Management d'entreprise",heures:11,promo:'MCOM1',evalType:'CC'},
@@ -2049,7 +2050,7 @@ let MODULES = [
   {id:'MC2-B2-5',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:'Personal Branding',ref:'Communication digitale',heures:17,promo:'MCOM2',evalType:'CC'},
   {id:'MC2-B2-CCO',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:'Partiel fin de bloc 2',ref:'',heures:0,promo:'MCOM2',evalType:'CCO',isCC:true},
   {id:'MC2-B2-C2',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:'C2 — Partie 2 : Offre commerciale',ref:'',heures:0,promo:'MCOM2',evalType:'CERTIF',isCertif:true},
-  {id:'MC2-B2-ORAL',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:'Oral fin de bloc 2',ref:'',heures:0,promo:'MCOM2',evalType:'SOUTENANCE',isSoutenance:true,nbCompetences:6},
+  {id:'MC2-B2-ORAL',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:"Oral fin de bloc 2 - Offre commerciale en réponse à un AO",ref:'',heures:0,promo:'MCOM2',evalType:'SOUTENANCE',isSoutenance:true,nbCompetences:6},
   // BLOC 3 — MCOM2
   {id:'MC2-B3-1',ue:'BLOC3',ueName:"Management équipe & réseau",pilier:'BLOC 3',nom:'Droit du travail',ref:'Gestion RH',heures:14,promo:'MCOM2',evalType:'CC'},
   {id:'MC2-B3-2',ue:'BLOC3',ueName:"Management équipe & réseau",pilier:'BLOC 3',nom:'Fondamentaux RH',ref:'Gestion RH',heures:7,promo:'MCOM2',evalType:'CC'},
@@ -3783,18 +3784,11 @@ function getMCOMBlocAvg(studentId, pilier) {
   let ccSum = 0, ccCount = 0;
   let ccoSum = 0, ccoCount = 0;
   let certifSum = 0, certifCount = 0;
-  let oralAcquis = null; // null = not evaluated, true = acquis, false = non acquis
 
   allMCOM.forEach(m => {
     const k = studentId + '_' + m.id;
     const g = grades[k] || {};
-    if (m.evalType === 'SOUTENANCE') {
-      // Oral: check if grille is filled — stored as nonAcquis===0 means acquis
-      if (g.nonAcquis !== undefined && g.nonAcquis !== '') {
-        oralAcquis = parseInt(g.nonAcquis) === 0;
-      }
-      return;
-    }
+    if (m.evalType === 'SOUTENANCE') return; // orals aggregated separately below
     if (g.absence === 'AJ') return;
     const note = g.note !== undefined && g.note !== '' && g.note !== null ? parseFloat(g.note) : null;
     if (note === null) return;
@@ -3802,6 +3796,20 @@ function getMCOMBlocAvg(studentId, pilier) {
     else if (m.evalType === 'CCO') { ccoSum += note; ccoCount++; }
     else if (m.evalType === 'CERTIF') { certifSum += note; certifCount++; }
   });
+
+  // Aggregate ALL orals of the bloc (a bloc can have several, e.g. MCOM bloc 2 = 2 orals):
+  // - false if at least one graded oral is non acquis
+  // - true only if every oral is graded AND every oral is acquis
+  // - null otherwise (at least one still pending, no failure recorded yet)
+  const oralMods = allMCOM.filter(m => m.evalType === 'SOUTENANCE');
+  const oralResults = oralMods.map(m => {
+    const g = grades[studentId + '_' + m.id] || {};
+    if (g.nonAcquis === undefined || g.nonAcquis === '') return null;
+    return parseInt(g.nonAcquis) === 0;
+  });
+  let oralAcquis = null;
+  if (oralResults.some(r => r === false)) oralAcquis = false;
+  else if (oralResults.length > 0 && oralResults.every(r => r === true)) oralAcquis = true;
 
   const ccAvg = ccCount > 0 ? ccSum / ccCount : null;
   const ccoAvg = ccoCount > 0 ? ccoSum / ccoCount : null;
