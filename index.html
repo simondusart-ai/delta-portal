@@ -2076,6 +2076,11 @@ let MODULES = [
 
 ];
 
+// Modules neutralisés pour la cohorte MCOM1 actuelle (2025/2026, annee=4).
+// Masqués de la saisie, des bulletins, des comptes de notes manquantes et du calcul de bloc.
+// Les données 2024/2025 (MCOM2 actuels, annee=5, vue MCOM1_PREV) ne sont PAS impactées.
+const NEUTRALIZED_FOR_CURRENT_MCOM1 = new Set(['MC1-B4-2']);
+
 const STUDENTS = [
   {id:'S01',prenom:'Nathanaël',nom:'Grenot',code:'DELTA-NG01',password:'delta2025',promo:'Bachelor 1',annee:1},
   {id:'S02',prenom:'Maximilien',nom:'Chazalette',code:'DELTA-MC02',password:'delta2025',promo:'Bachelor 1',annee:1},
@@ -3767,7 +3772,7 @@ function getModulesForStudent(student) {
   if (student.annee === 1) return MODULES.filter(m => m.promo === 'B1');
   if (student.annee === 2) return MODULES.filter(m => m.promo === 'B2');
   if (student.annee === 3) return MODULES.filter(m => m.promo === 'B3');
-  if (student.annee === 4) return MODULES.filter(m => m.promo === 'MCOM1');
+  if (student.annee === 4) return MODULES.filter(m => m.promo === 'MCOM1' && !NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id));
   // MCOM2 students see their Y1 (MCOM1) + Y2 (MCOM2) modules
   if (student.annee === 5) return MODULES.filter(m => m.promo === 'MCOM1' || m.promo === 'MCOM2');
   return [];
@@ -3779,7 +3784,8 @@ function getMCOMBlocAvg(studentId, pilier) {
   if (!student || (student.annee !== 4 && student.annee !== 5)) return null;
   // Use same module scope as getModulesForStudent to avoid discrepancies
   const mcomPromos = student.annee === 5 ? ['MCOM1','MCOM2'] : ['MCOM1'];
-  const allMCOM = MODULES.filter(m => mcomPromos.includes(m.promo) && m.pilier === pilier);
+  const allMCOM = MODULES.filter(m => mcomPromos.includes(m.promo) && m.pilier === pilier
+    && !(student.annee === 4 && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id)));
 
   let ccSum = 0, ccCount = 0;
   let ccoSum = 0, ccoCount = 0;
@@ -4180,7 +4186,9 @@ function showMissingNotesDetail(cls) {
   const students = isMCOM1Prev
     ? REAL_STUDENTS.filter(s => s.annee === 5)
     : REAL_STUDENTS.filter(s => s.annee === annee);
-  const classMods = MODULES.filter(m => m.promo === promoMap[cls]);
+  const hideNeutralized = cls === 'mcom1' && !isMCOM1Prev;
+  const classMods = MODULES.filter(m => m.promo === promoMap[cls]
+    && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id)));
 
   const missingByStudent = [];
   students.forEach(s => {
@@ -6843,7 +6851,9 @@ function renderDashboard() {
 
     // Count modules for this class
     const promoMap = {'b1':'B1','b2':'B2','b3':'B3','mcom1':'MCOM1','mcom2':'MCOM2'};
-    const classMods = MODULES.filter(m => m.promo === promoMap[cls]);
+    const hideNeutralized = cls === 'mcom1' && !isMCOM1Prev;
+    const classMods = MODULES.filter(m => m.promo === promoMap[cls]
+      && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id)));
     const totalMods = classMods.length;
 
     let html = '';
