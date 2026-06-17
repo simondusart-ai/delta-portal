@@ -904,6 +904,9 @@ tbody tr:hover td { background: var(--blanc); }
 .pt-cc { background: #FEF3C7; color: #92620A; font-weight: 600; }
 .pt-cco { background: #F97316; color: #fff; font-weight: 700; }
 .pt-cc-simple { background: #FEF3C7; color: #92620A; font-weight: 500; }
+.pt-disabled { background: #FEE2E2; color: #B91C1C; font-weight: 700; }
+.sidebar-item.disabled-item { opacity: 0.55; }
+.sidebar-item.disabled-item:hover { opacity: 0.8; }
 
 /* Certif module highlight in sidebar */
 .sidebar-item.certif-module { background: #FAFAF8; border-left: 3px solid #000; }
@@ -2961,16 +2964,19 @@ function buildSidebar() {
     const isCCO = m.evalType === 'CCO';
     const isSoutenance = m.evalType === 'SOUTENANCE';
     const isOralBlanc = m.evalType === 'ORAL_BLANC';
-    const tag = isCertif
-      ? `<span class="sidebar-pilier-tag pt-certif">CERTIF</span>`
-      : isSoutenance
-        ? `<span class="sidebar-pilier-tag pt-soutenance">ORAL</span>`
-        : isOralBlanc
-          ? `<span class="sidebar-pilier-tag pt-oral-blanc">BLANC</span>`
-          : isCCO
-            ? `<span class="sidebar-pilier-tag pt-cco">CCO</span>`
-            : `<span class="sidebar-pilier-tag pt-cc-simple">CC</span>`;
-    html += `<div class="sidebar-item" id="si-${m.id}" onclick="selectModule('${m.id.replace(/'/g,"\\'")}')">
+    const isDisabled = currentPromo === 'MCOM1' && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id);
+    const tag = isDisabled
+      ? `<span class="sidebar-pilier-tag pt-disabled" title="Module désactivé pour 2025/2026 — réactivable">DISABLED</span>`
+      : isCertif
+        ? `<span class="sidebar-pilier-tag pt-certif">CERTIF</span>`
+        : isSoutenance
+          ? `<span class="sidebar-pilier-tag pt-soutenance">ORAL</span>`
+          : isOralBlanc
+            ? `<span class="sidebar-pilier-tag pt-oral-blanc">BLANC</span>`
+            : isCCO
+              ? `<span class="sidebar-pilier-tag pt-cco">CCO</span>`
+              : `<span class="sidebar-pilier-tag pt-cc-simple">CC</span>`;
+    html += `<div class="sidebar-item${isDisabled ? ' disabled-item' : ''}" id="si-${m.id}" onclick="selectModule('${m.id.replace(/'/g,"\\'")}')">
       ${tag}
       <span style="line-height:1.35">${m.nom}</span>
     </div>`;
@@ -7625,17 +7631,20 @@ function buildAbsSidebar() {
     const isCCO = m.evalType === 'CCO';
     const isSoutenance = m.evalType === 'SOUTENANCE';
     const isOralBlanc = m.evalType === 'ORAL_BLANC';
-    const tag = isCertif
-      ? `<span class="sidebar-pilier-tag pt-certif">CERTIF</span>`
-      : isSoutenance
-        ? `<span class="sidebar-pilier-tag pt-soutenance">ORAL</span>`
-        : isOralBlanc
-          ? `<span class="sidebar-pilier-tag pt-oral-blanc">BLANC</span>`
-          : isCCO
-            ? `<span class="sidebar-pilier-tag pt-cco">CCO</span>`
-            : `<span class="sidebar-pilier-tag pt-cc-simple">CC</span>`;
+    const isDisabled = currentAbsPromo === 'MCOM1' && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id);
+    const tag = isDisabled
+      ? `<span class="sidebar-pilier-tag pt-disabled" title="Module désactivé pour 2025/2026 — réactivable">DISABLED</span>`
+      : isCertif
+        ? `<span class="sidebar-pilier-tag pt-certif">CERTIF</span>`
+        : isSoutenance
+          ? `<span class="sidebar-pilier-tag pt-soutenance">ORAL</span>`
+          : isOralBlanc
+            ? `<span class="sidebar-pilier-tag pt-oral-blanc">BLANC</span>`
+            : isCCO
+              ? `<span class="sidebar-pilier-tag pt-cco">CCO</span>`
+              : `<span class="sidebar-pilier-tag pt-cc-simple">CC</span>`;
     const isActive = currentAbsModule?.id === m.id;
-    h += `<div class="sidebar-item${isActive?' active':''}" id="abs-si-${m.id}" onclick="selectAbsModule('${m.id}')">
+    h += `<div class="sidebar-item${isActive?' active':''}${isDisabled?' disabled-item':''}" id="abs-si-${m.id}" onclick="selectAbsModule('${m.id}')">
       ${tag}
       <span style="line-height:1.35">${m.nom}</span>
     </div>`;
