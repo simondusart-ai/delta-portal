@@ -9,6 +9,15 @@
 <meta name="apple-mobile-web-app-title" content="Delta">
 <meta name="theme-color" content="#000000">
 <link rel="apple-touch-icon" href="icon-180.png">
+<script>
+  // Sur #assistant : nom "Présences", icône lavande, theme-color lavande.
+  // iOS lit le DOM live au moment de "Sur l'écran d'accueil", donc swap = pris en compte.
+  if (location.hash === '#assistant') {
+    document.querySelector('link[rel="apple-touch-icon"]').href = 'icon-180-assistant.png';
+    document.querySelector('meta[name="apple-mobile-web-app-title"]').content = 'Présences';
+    document.querySelector('meta[name="theme-color"]').content = '#C895EF';
+  }
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
