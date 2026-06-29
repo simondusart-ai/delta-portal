@@ -919,6 +919,16 @@ tbody tr:hover td { background: var(--blanc); }
 .pt-cco { background: #F97316; color: #fff; font-weight: 700; }
 .pt-cc-simple { background: #FEF3C7; color: #92620A; font-weight: 500; }
 .pt-disabled { background: #FEE2E2; color: #B91C1C; font-weight: 700; }
+.pub-badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:10px; font-weight:700; letter-spacing:0.3px; white-space:nowrap; }
+.pub-badge.published { background:#DCFCE7; color:#15803D; }
+.pub-badge.draft { background:#FEF3C7; color:#92620A; }
+.btn-publish-row { background:#000; color:#fff; border:none; padding:5px 11px; border-radius:8px; font-size:11px; font-weight:600; cursor:pointer; font-family:inherit; transition: background 0.15s; }
+.btn-publish-row:hover { background:#333; }
+.btn-unpublish-row { background:#fff; color:#92620A; border:1.5px solid #FEF3C7; padding:5px 11px; border-radius:8px; font-size:11px; font-weight:600; cursor:pointer; font-family:inherit; transition: background 0.15s; }
+.btn-unpublish-row:hover { background:#FFFBEB; }
+.btn-publish-all { background:#7B3FA0; color:#fff; border:none; padding:9px 18px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+.btn-publish-all:hover { background:#5e2f7c; }
+.btn-publish-all:disabled { background:#e0e0e8; color:#999; cursor:not-allowed; }
 .sidebar-item.disabled-item { opacity: 0.55; }
 .sidebar-item.disabled-item:hover { opacity: 0.8; }
 
@@ -1266,7 +1276,7 @@ tbody tr:hover td { background: var(--blanc); }
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>Étudiant</th><th>Promo</th><th>Note /20</th><th>Mention</th><th>Commentaire</th><th>Statut</th><th></th>
+                <th>Étudiant</th><th>Promo</th><th>Note /20</th><th>Mention</th><th>Commentaire</th><th>Statut</th><th>Publication</th><th></th>
               </tr></thead>
               <tbody id="grade-tbody"></tbody>
             </table>
@@ -1275,6 +1285,7 @@ tbody tr:hover td { background: var(--blanc); }
             <div class="toast-saved" id="toast-saved">✓ Notes enregistrées</div>
             <button class="btn-secondary" onclick="renderGradeTable()">Annuler</button>
             <button class="btn-primary" onclick="saveGrades()">Enregistrer les notes</button>
+            <button id="btn-publish-all" class="btn-publish-all" onclick="publishAllDrafts()">Publier toutes les notes</button>
           </div>
         </div>
       </div>
@@ -1902,12 +1913,26 @@ async function loadUserLogins() {
   } catch(e) { console.log('user_logins table not yet created', e); }
 }
 
+// Cache les notes en brouillon (published === false) dès qu'un étudiant est en vue
+// (login étudiant ou prévisualisation admin) : la prévisualisation doit refléter exactement
+// ce que voit l'étudiant. Les notes brouillon n'apparaissent que dans la saisie admin.
+function withStudentFilteredGrades(fn) {
+  if (!currentStudent) return fn();
+  const orig = grades;
+  const filtered = {};
+  for (const k in orig) {
+    if (orig[k].published !== false) filtered[k] = orig[k];
+  }
+  grades = filtered;
+  try { return fn(); } finally { grades = orig; }
+}
+
 async function loadAllGrades() {
   grades = {};
   const rows = await sbGet('grades');
   rows.forEach(row => {
     const key = row.student_id + '_' + row.module_id;
-    grades[key] = { note: row.note !== null && row.note !== undefined ? String(row.note) : '', commentaire: row.commentaire || '', valide: row.valide || false, absence: row.absence || '', nonAcquis: row.non_acquis !== null && row.non_acquis !== undefined ? String(row.non_acquis) : '', grille_url: row.grille_url || '' };
+    grades[key] = { note: row.note !== null && row.note !== undefined ? String(row.note) : '', commentaire: row.commentaire || '', valide: row.valide || false, absence: row.absence || '', nonAcquis: row.non_acquis !== null && row.non_acquis !== undefined ? String(row.non_acquis) : '', grille_url: row.grille_url || '', published: row.published !== false };
   });
   console.log('Loaded', rows.length, 'grades from Supabase');
 }
@@ -3062,6 +3087,12 @@ function renderGradeTable() {
     const initials = (s.prenom[0]+(s.nom[0])).toUpperCase();
     const hasNote = note !== '';
     const isLocked = (isValide && !hasNote) || absence !== '';
+    const hasData = hasNote || isValide || absence !== '';
+    const isPublished = g.published !== false;
+    const pubCell = !hasData ? '<span style="color:#c0c0c0;font-size:11px">—</span>'
+      : isPublished
+        ? `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start"><span class="pub-badge published">✓ Publié</span><button class="btn-unpublish-row" onclick="setGradePublished('${s.id}','${currentModule.id}',false)" title="Masquer cette note à l'étudiant">Dépublier</button></div>`
+        : `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start"><span class="pub-badge draft">📝 Brouillon</span><button class="btn-publish-row" onclick="setGradePublished('${s.id}','${currentModule.id}',true)" title="Rendre cette note visible à l'étudiant">Publier</button></div>`;
     return `<tr ${absence === 'ANJ' ? 'style="background:#FFF5F5"' : absence === 'AJ' ? 'style="background:#FFFBEB"' : ''}>
       <td><div class="student-cell"><div class="avatar ${avatarC}">${initials}</div><strong>${s.prenom} ${s.nom}</strong></div></td>
       <td style="font-size:12px;color:#6B6B6B">${s.promo}</td>
@@ -3080,9 +3111,11 @@ function renderGradeTable() {
       <td id="ment-${s.id}">${mentionH}</td>
       <td><textarea class="comment-input" id="c-${s.id}" placeholder="Commentaire…">${comment}</textarea></td>
       <td id="stat-${s.id}">${statusH}</td>
-      <td>${(hasNote || isValide || absence!=='') ? `<button class="btn-delete" onclick="deleteGrade('${s.id}','${currentModule.id}')" title="Supprimer">🗑</button>` : ''}</td>
+      <td>${pubCell}</td>
+      <td>${hasData ? `<button class="btn-delete" onclick="deleteGrade('${s.id}','${currentModule.id}')" title="Supprimer">🗑</button>` : ''}</td>
     </tr>`;
   }).join('');
+  updatePublishAllButton();
 
   students.forEach(s=>{
     const inp = document.getElementById('g-'+s.id);
@@ -3099,8 +3132,8 @@ function renderSoutenanceTable() {
   const isMCOMOral = m.evalType === 'SOUTENANCE' && (m.promo === 'MCOM1' || m.promo === 'MCOM2');
   const colLabel = isOralBlanc ? 'Statut oral blanc' : isMCOMOral ? 'Mention finale' : 'Statut soutenance';
   document.querySelector('#grade-tbody').closest('table').querySelector('thead tr').innerHTML = isMCOMOral
-    ? `<th>Étudiant</th><th>Promo</th><th>Mention orale</th><th>Absence</th><th>Commentaire</th><th>${colLabel}</th><th></th>`
-    : `<th>Étudiant</th><th>Promo</th><th>Note /20</th><th>Compétences non acquises</th><th>Absence</th><th>Commentaire</th><th>${colLabel}</th>${isOralBlanc ? '<th>Grille PDF</th>' : ''}<th></th>`;
+    ? `<th>Étudiant</th><th>Promo</th><th>Mention orale</th><th>Absence</th><th>Commentaire</th><th>${colLabel}</th><th>Publication</th><th></th>`
+    : `<th>Étudiant</th><th>Promo</th><th>Note /20</th><th>Compétences non acquises</th><th>Absence</th><th>Commentaire</th><th>${colLabel}</th>${isOralBlanc ? '<th>Grille PDF</th>' : ''}<th>Publication</th><th></th>`;
 
   tbody.innerHTML = students.map((s,i)=>{
     const key = s.id+'_'+m.id;
@@ -3169,6 +3202,11 @@ function renderSoutenanceTable() {
           <span style="font-size:11px;color:var(--gris-text)">/ ${m.nbCompetences||10}</span>
         </div>`
       }</td>`;
+    const isPublished = g.published !== false;
+    const pubCell = !hasData ? '<td><span style="color:#c0c0c0;font-size:11px">—</span></td>'
+      : isPublished
+        ? `<td><div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start"><span class="pub-badge published">✓ Publié</span><button class="btn-unpublish-row" onclick="setGradePublished('${s.id}','${m.id}',false)" title="Masquer à l'étudiant">Dépublier</button></div></td>`
+        : `<td><div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start"><span class="pub-badge draft">📝 Brouillon</span><button class="btn-publish-row" onclick="setGradePublished('${s.id}','${m.id}',true)" title="Rendre visible à l'étudiant">Publier</button></div></td>`;
     return `<tr ${absence !== '' ? 'style="background:#FFFBEB"' : ''}>
       <td><div class="student-cell"><div class="avatar ${avatarC}">${initials}</div><strong>${s.prenom} ${s.nom}</strong></div></td>
       <td style="font-size:12px;color:#6B6B6B">${s.promo}</td>
@@ -3184,9 +3222,11 @@ function renderSoutenanceTable() {
       <td><textarea class="comment-input" id="c-${s.id}" placeholder="Commentaire jury…">${comment}</textarea></td>
       <td id="stat-${s.id}">${statutH}</td>
       ${fileUpload}
+      ${pubCell}
       <td>${hasData ? `<button class="btn-delete" onclick="deleteGrade('${s.id}','${m.id}')" title="Supprimer">🗑</button>` : ''}</td>
     </tr>`;
   }).join('');
+  updatePublishAllButton();
 }
 
 function setMCOMOralMention(sid, val) {
@@ -3370,8 +3410,9 @@ async function saveSoutenanceGrades() {
     const nonAcquis = naEl ? naEl.value.trim() : (g.nonAcquis !== undefined ? String(g.nonAcquis) : '');
     const absence = absEl ? absEl.value : (g.absence || '');
     const commentaire = commEl ? commEl.value.trim() : (g.commentaire || '');
-    // Update cache
-    grades[key] = { ...g, note, nonAcquis, absence, commentaire };
+    const isExisting = g.published !== undefined;
+    const published = isExisting ? (g.published !== false) : false;
+    grades[key] = { ...g, note, nonAcquis, absence, commentaire, published };
     if (note !== '' || nonAcquis !== '' || absence !== '' || commentaire !== '') {
       const row = {
         student_id: s.id,
@@ -3380,6 +3421,7 @@ async function saveSoutenanceGrades() {
         commentaire: commentaire || null,
         valide: false,
         absence: absence || null,
+        published,
         updated_at: new Date().toISOString()
       };
       if (nonAcquis !== '') row.non_acquis = parseInt(nonAcquis);
@@ -3396,6 +3438,87 @@ async function saveSoutenanceGrades() {
     renderGradeTable();
   } else {
     showError("Erreur lors de l'enregistrement.");
+  }
+}
+
+function updatePublishAllButton() {
+  const btn = document.getElementById('btn-publish-all');
+  if (!btn || !currentModule) return;
+  const students = getStudentsForModule(currentModule);
+  let drafts = 0;
+  students.forEach(s => {
+    const g = grades[s.id + '_' + currentModule.id];
+    if (!g) return;
+    const hasData = g.note || g.valide || g.absence || g.nonAcquis;
+    if (hasData && g.published === false) drafts++;
+  });
+  if (drafts === 0) {
+    btn.textContent = 'Toutes les notes sont publiées';
+    btn.disabled = true;
+  } else {
+    btn.textContent = `Publier ${drafts} brouillon${drafts>1?'s':''}`;
+    btn.disabled = false;
+  }
+}
+
+async function setGradePublished(studentId, moduleId, published) {
+  const key = studentId + '_' + moduleId;
+  const g = grades[key];
+  if (!g) return;
+  if ((g.published !== false) === !!published) return; // nothing to do
+  grades[key] = { ...g, published: !!published };
+  const row = {
+    student_id: studentId,
+    module_id: moduleId,
+    published: !!published,
+    updated_at: new Date().toISOString()
+  };
+  showLoader(published ? 'Publication…' : 'Dépublication…');
+  const ok = await sbUpsert('grades', row);
+  hideLoader();
+  if (ok) {
+    showSuccess(published ? 'Note publiée — visible par l\'étudiant' : 'Note dépubliée — masquée à l\'étudiant');
+    renderGradeTable();
+    renderBulletinsGrid();
+  } else {
+    grades[key] = g; // rollback
+    showError('Erreur — réessayez.');
+  }
+}
+
+async function publishAllDrafts() {
+  if (!currentModule) return;
+  const students = getStudentsForModule(currentModule);
+  const rows = [];
+  students.forEach(s => {
+    const key = s.id + '_' + currentModule.id;
+    const g = grades[key];
+    if (!g) return;
+    const hasData = g.note || g.valide || g.absence || g.nonAcquis;
+    if (!hasData) return;
+    if (g.published === false) {
+      rows.push({
+        student_id: s.id,
+        module_id: currentModule.id,
+        published: true,
+        updated_at: new Date().toISOString()
+      });
+    }
+  });
+  if (!rows.length) { showSuccess('Aucun brouillon à publier.'); return; }
+  showLoader(`Publication de ${rows.length} note${rows.length>1?'s':''}…`);
+  const ok = await sbUpsert('grades', rows);
+  hideLoader();
+  if (ok) {
+    rows.forEach(r => {
+      const k = r.student_id + '_' + r.module_id;
+      if (grades[k]) grades[k] = { ...grades[k], published: true };
+    });
+    showSuccess(`${rows.length} note${rows.length>1?'s':''} publiée${rows.length>1?'s':''} — visible${rows.length>1?'s':''} par les étudiants`);
+    renderGradeTable();
+    renderBulletinsGrid();
+  } else {
+    showError('Erreur lors de la publication. Réessayez.');
   }
 }
 
@@ -3419,8 +3542,12 @@ async function saveGrades() {
     const absence = document.getElementById('abs-'+s.id)?.value || '';
     const nonAcquisEl = document.getElementById('na-'+s.id);
     const nonAcquis = nonAcquisEl ? nonAcquisEl.value : '';
-    // Update local cache with all fields
-    grades[key] = { note, commentaire, valide, absence, nonAcquis };
+    const prev = grades[key] || {};
+    // Une note "nouvelle" = pas encore en base : pas de champ published côté cache.
+    // Une note existante conserve son état publié/brouillon (Option A : modif n'unpublie pas).
+    const isExisting = prev.published !== undefined;
+    const published = isExisting ? (prev.published !== false) : false;
+    grades[key] = { note, commentaire, valide, absence, nonAcquis, published, grille_url: prev.grille_url || '' };
     if (note !== '' || valide || absence !== '' || nonAcquis !== '') {
       const row = {
         student_id: s.id,
@@ -3429,11 +3556,11 @@ async function saveGrades() {
         commentaire: commentaire || null,
         valide: absence !== '' ? false : (note !== '' ? true : valide),
         absence: absence || null,
+        published,
         updated_at: new Date().toISOString()
       };
       if (nonAcquis !== '') row.non_acquis = parseInt(nonAcquis);
-      const existingGrille = grades[s.id+'_'+currentModule.id]?.grille_url;
-      if (existingGrille) row.grille_url = existingGrille;
+      if (prev.grille_url) row.grille_url = prev.grille_url;
       rows.push(row);
     }
   });
@@ -3442,6 +3569,7 @@ async function saveGrades() {
   hideLoader();
   if (ok) {
     showSuccess('Notes enregistrées avec succès !');
+    renderGradeTable();
     renderBulletinsGrid();
   } else {
     showError('Erreur lors de l\'enregistrement. Réessayez.');
@@ -4359,6 +4487,9 @@ function closeStudentPreview() {
 }
 
 function renderStudentView() {
+  return withStudentFilteredGrades(() => _renderStudentViewImpl());
+}
+function _renderStudentViewImpl() {
   const s = currentStudent;
   const {avg,filled} = getStudentAvg(s);
 
@@ -4824,7 +4955,9 @@ function renderStudentCalendar(s) {
 }
 
 
-function downloadBulletin() { generatePDF(currentStudent); }
+function downloadBulletin() {
+  withStudentFilteredGrades(() => generatePDF(currentStudent));
+}
 
 // ===== DASHBOARD =====
 function showDashSub(sub) {
@@ -7084,6 +7217,7 @@ async function uploadGrille(event, studentId, moduleId) {
     absence: grades[key].absence || null,
     non_acquis: grades[key].nonAcquis ? parseInt(grades[key].nonAcquis) : null,
     grille_url: publicUrl,
+    published: grades[key].published !== false,
     updated_at: new Date().toISOString()
   });
   hideLoader();
