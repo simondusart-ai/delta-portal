@@ -3993,22 +3993,32 @@ function getMCOMBlocAvg(studentId, pilier) {
 
   if (filled > 0 || oralAcquis !== null) {
     const avgOk = weightedTotal > 0 && avg >= 10;
-    // A bloc can only be 'valide' if ALL certif modules are present and >= 10
-    // AND the CCO (partiel) is also present
+    // Bloc 4 MCOM : épreuves CERTIF écrites compensables — la moyenne des CERTIFs ≥ 10 suffit
+    // à valider la composante CERTIF (une note < 10 isolée n'invalide pas le bloc).
+    // Autres blocs : règle stricte, chaque CERTIF doit individuellement être ≥ 10.
+    const isLenientCertifBloc = pilier === 'BLOC 4';
     const certifMods = allMCOM.filter(m => m.evalType === 'CERTIF');
     const ccoMods = allMCOM.filter(m => m.evalType === 'CCO');
-    const allCertifPresent = certifMods.length > 0 && certifMods.every(m => {
+    const allCertifsHaveNote = certifMods.length > 0 && certifMods.every(m => {
       const g = grades[studentId + '_' + m.id] || {};
-      return g.note !== '' && g.note !== undefined && g.note !== null && parseFloat(g.note) >= 10;
+      return g.note !== '' && g.note !== undefined && g.note !== null;
     });
+    const allCertifPresent = isLenientCertifBloc
+      ? (allCertifsHaveNote && certifAvg !== null && certifAvg >= 10)
+      : (certifMods.length > 0 && certifMods.every(m => {
+          const g = grades[studentId + '_' + m.id] || {};
+          return g.note !== '' && g.note !== undefined && g.note !== null && parseFloat(g.note) >= 10;
+        }));
     const allCCOPresent = ccoMods.length === 0 || ccoMods.every(m => {
       const g = grades[studentId + '_' + m.id] || {};
       return g.note !== '' && g.note !== undefined && g.note !== null;
     });
-    const anyCertifFailed = certifMods.some(m => {
-      const g = grades[studentId + '_' + m.id] || {};
-      return g.note !== '' && g.note !== undefined && g.note !== null && parseFloat(g.note) < 10;
-    });
+    const anyCertifFailed = isLenientCertifBloc
+      ? (allCertifsHaveNote && certifAvg !== null && certifAvg < 10)
+      : certifMods.some(m => {
+          const g = grades[studentId + '_' + m.id] || {};
+          return g.note !== '' && g.note !== undefined && g.note !== null && parseFloat(g.note) < 10;
+        });
 
     if (hasOralModule) {
       if (allCertifPresent && allCCOPresent && avgOk && oralAcquis === true) blocStatus = 'valide';
