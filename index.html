@@ -1984,6 +1984,7 @@ let MODULES = [
   {id:'M6.4',ue:'UE6',ueName:"Concevoir un MVP",pilier:'Product',nom:'Intelligence Artificielle & Vibe-coding',heures:21,promo:'B2'},
   {id:'M7.1',ue:'UE7',ueName:"Risques financiers & opérationnels",pilier:'Operations',nom:'Fondamentaux du Droit du Travail',heures:20,promo:'B2'},
   {id:'M7.2',ue:'UE7',ueName:"Risques financiers & opérationnels",pilier:'Operations',nom:'Assurer sa solvabilité',heures:21,promo:'B2'},
+  {id:'M7.2-RAT',ue:'UE7',ueName:"Risques financiers & opérationnels",pilier:'Operations',nom:'Rattrapage Finance',heures:2,promo:'B2',restrictToStudents:['S07'],replaces:'M7.2'},
   {id:'M7.3',ue:'UE7',ueName:"Risques financiers & opérationnels",pilier:'Operations',nom:'Gérer sa chaîne logistique',heures:20,promo:'B2'},
   {id:'M7.4',ue:'UE7',ueName:"Risques financiers & opérationnels",pilier:'Operations',nom:'Fixer et atteindre ses objectifs',heures:10,promo:'B2'},
   {id:'M7.5',ue:'UE7',ueName:"Risques financiers & opérationnels",pilier:'Operations',nom:'Écoute active & résolution de conflits',heures:10,promo:'B2'},
@@ -3813,9 +3814,12 @@ function renderStudentsTab() {
 
 function getStudentAvg(student) {
   let sum=0,count=0,filled=0;
-  getModulesForStudent(student).forEach(m=>{
+  const mods = getModulesForStudent(student);
+  const replaced = getReplacedModuleIds(student.id, mods);
+  mods.forEach(m=>{
     if (m.evalType === 'SOUTENANCE') return;
     if (m.evalType === 'ORAL_BLANC') return;
+    if (replaced.has(m.id)) return; // note remplacée par un rattrapage
     const k=student.id+'_'+m.id;
     const g=grades[k]||{};
     if (g.absence==='AJ') { filled++; }
@@ -3916,13 +3920,25 @@ async function initStudent() {
 }
 
 function getModulesForStudent(student) {
-  if (student.annee === 1) return MODULES.filter(m => m.promo === 'B1');
-  if (student.annee === 2) return MODULES.filter(m => m.promo === 'B2');
-  if (student.annee === 3) return MODULES.filter(m => m.promo === 'B3');
-  if (student.annee === 4) return MODULES.filter(m => m.promo === 'MCOM1' && !NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id));
+  const allowed = m => !m.restrictToStudents || m.restrictToStudents.includes(student.id);
+  if (student.annee === 1) return MODULES.filter(m => m.promo === 'B1' && allowed(m));
+  if (student.annee === 2) return MODULES.filter(m => m.promo === 'B2' && allowed(m));
+  if (student.annee === 3) return MODULES.filter(m => m.promo === 'B3' && allowed(m));
+  if (student.annee === 4) return MODULES.filter(m => m.promo === 'MCOM1' && !NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id) && allowed(m));
   // MCOM2 students see their Y1 (MCOM1) + Y2 (MCOM2) modules
-  if (student.annee === 5) return MODULES.filter(m => m.promo === 'MCOM1' || m.promo === 'MCOM2');
+  if (student.annee === 5) return MODULES.filter(m => (m.promo === 'MCOM1' || m.promo === 'MCOM2') && allowed(m));
   return [];
+}
+
+// Returns set of module IDs that have been replaced by a rattrapage with a recorded note
+function getReplacedModuleIds(studentId, mods) {
+  const replaced = new Set();
+  mods.forEach(m => {
+    if (!m.replaces) return;
+    const g = grades[studentId + '_' + m.id] || {};
+    if (g.note !== '' && g.note !== undefined && g.note !== null) replaced.add(m.replaces);
+  });
+  return replaced;
 }
 
 function getMCOMBlocAvg(studentId, pilier) {
@@ -4440,9 +4456,11 @@ function getPilierAvg(studentId, pilier) {
     }
   }
   const isB3Student = student && student.annee === 3;
+  const replacedInPilier = getReplacedModuleIds(studentId, mods);
   mods.forEach(m => {
     if (m.evalType === 'SOUTENANCE') return;
     if (m.evalType === 'ORAL_BLANC') return;
+    if (replacedInPilier.has(m.id)) return; // note remplacée par un rattrapage
     // B3: only CERTIF notes count as the bloc average (art. 18 & 25 EIMP)
     if (isB3Student && m.evalType !== 'CERTIF') return;
     const k = studentId + '_' + m.id;
