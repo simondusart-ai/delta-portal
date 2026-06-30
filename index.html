@@ -9164,6 +9164,71 @@ function generatePDF(student, options) {
   // (signature placed after commentaire général below)
   y += 8;
 
+  // ── Section "Moyennes par bloc" ──
+  const isMCOMpdf = student.annee === 4 || student.annee === 5;
+  const isB3pdf = student.annee === 3;
+  const piliersAll = isMCOMpdf
+    ? ['BLOC 1','BLOC 2','BLOC 3','BLOC 4']
+    : isB3pdf
+      ? ['BLOC 1','BLOC 2','BLOC 3','TRANSVERSE']
+      : ['Product','Operations','Growth & Sales','Data','Other'];
+  const pilierLabelsPdf = (isMCOMpdf || isB3pdf)
+    ? {'BLOC 1':'Bloc 1','BLOC 2':'Bloc 2','BLOC 3':'Bloc 3','BLOC 4':'Bloc 4','TRANSVERSE':'Transverse'}
+    : {'Product':'Product','Operations':'Operations','Growth & Sales':'Growth & Sales','Data':'Data','Other':'Autre'};
+  const piliersPresent = piliersAll.filter(p => studentMods.some(m => m.pilier === p));
+
+  if (piliersPresent.length > 0) {
+    const headerH = 7;
+    const lineH = 5;
+    const ruleH = 7;
+    const padTop = 2, padBot = 4;
+    const sectionH = padTop + headerH + piliersPresent.length * lineH + ruleH + padBot;
+
+    if (y + sectionH + 6 > PAGE_BOTTOM) {
+      drawFooter();
+      doc.addPage();
+      pageNum++;
+      drawHeader(pageNum);
+      y = 42;
+    }
+
+    doc.setFillColor(245,245,243);
+    doc.roundedRect(M, y, cW, sectionH, 2, 2, 'FD');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(80);
+    doc.text('Moyennes par bloc', M+3, y + padTop + 5);
+
+    let yy = y + padTop + headerH + 3;
+    piliersPresent.forEach(p => {
+      const pa = getPilierAvg(student.id, p);
+      const label = pilierLabelsPdf[p] || p;
+      const avgStr = pa && pa.count > 0 ? pa.avg.toFixed(2) + ' / 20' : '—';
+      let statusLabel = 'En attente';
+      let statusColor = [146,98,10];
+      if (pa) {
+        if (pa.blocStatus === 'valide') { statusLabel = 'Validé'; statusColor = [45,122,74]; }
+        else if (pa.blocStatus === 'rattrapage') { statusLabel = 'Rattrapage'; statusColor = [192,48,48]; }
+        else if (pa.blocStatus === 'en_cours') { statusLabel = 'En cours'; statusColor = [146,98,10]; }
+        else if (pa.count > 0) {
+          if (pa.avg >= 10) { statusLabel = 'Validé'; statusColor = [45,122,74]; }
+          else { statusLabel = 'Rattrapage'; statusColor = [192,48,48]; }
+        }
+      }
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(40);
+      doc.text(label, M+5, yy);
+      doc.setFont('helvetica','normal'); doc.setTextColor(40);
+      doc.text(avgStr, M+60, yy);
+      doc.setFont('helvetica','bold'); doc.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
+      doc.text(statusLabel, M+100, yy);
+      yy += lineH;
+    });
+
+    yy += 1;
+    doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(110);
+    doc.text("Règle de validation : chaque bloc est validé lorsque sa moyenne est supérieure ou égale à 10/20.", M+5, yy);
+
+    y += sectionH + 5;
+  }
+
   // Commentaire général box — texte enregistré (ou "À venir" par défaut)
   const commentGeneral = (bulletinComments[student.id] || '').trim();
   doc.setFontSize(8);
