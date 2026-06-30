@@ -2123,6 +2123,10 @@ let MODULES = [
 // Les données 2024/2025 (MCOM2 actuels, annee=5, vue MCOM1_PREV) ne sont PAS impactées.
 const NEUTRALIZED_FOR_CURRENT_MCOM1 = new Set(['MC1-B2-3']);
 
+// Modules neutralisés pour la cohorte Bachelor 3 actuelle.
+// Mêmes effets que NEUTRALIZED_FOR_CURRENT_MCOM1 : masqués partout sauf en historique.
+const NEUTRALIZED_FOR_CURRENT_B3 = new Set(['B3-M6','B3-M7']);
+
 const STUDENTS = [
   {id:'S01',prenom:'Nathanaël',nom:'Grenot',code:'DELTA-NG01',password:'delta2025',promo:'Bachelor 1',annee:1},
   {id:'S02',prenom:'Maximilien',nom:'Chazalette',code:'DELTA-MC02',password:'delta2025',promo:'Bachelor 1',annee:1},
@@ -3003,7 +3007,8 @@ function buildSidebar() {
     const isCCO = m.evalType === 'CCO';
     const isSoutenance = m.evalType === 'SOUTENANCE';
     const isOralBlanc = m.evalType === 'ORAL_BLANC';
-    const isDisabled = currentPromo === 'MCOM1' && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id);
+    const isDisabled = (currentPromo === 'MCOM1' && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
+      || (currentPromo === 'B3' && NEUTRALIZED_FOR_CURRENT_B3.has(m.id));
     const tag = isDisabled
       ? `<span class="sidebar-pilier-tag pt-disabled" title="Module désactivé pour 2025/2026 — réactivable">DISABLED</span>`
       : isCertif
@@ -3924,7 +3929,7 @@ function getModulesForStudent(student) {
   const allowed = m => !m.restrictToStudents || m.restrictToStudents.includes(student.id);
   if (student.annee === 1) return MODULES.filter(m => m.promo === 'B1' && allowed(m));
   if (student.annee === 2) return MODULES.filter(m => m.promo === 'B2' && allowed(m));
-  if (student.annee === 3) return MODULES.filter(m => m.promo === 'B3' && allowed(m));
+  if (student.annee === 3) return MODULES.filter(m => m.promo === 'B3' && !NEUTRALIZED_FOR_CURRENT_B3.has(m.id) && allowed(m));
   if (student.annee === 4) return MODULES.filter(m => m.promo === 'MCOM1' && !NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id) && allowed(m));
   // MCOM2 students see their Y1 (MCOM1) + Y2 (MCOM2) modules
   if (student.annee === 5) return MODULES.filter(m => (m.promo === 'MCOM1' || m.promo === 'MCOM2') && allowed(m));
@@ -4389,8 +4394,10 @@ function showMissingNotesDetail(cls) {
     ? REAL_STUDENTS.filter(s => s.annee === 5)
     : REAL_STUDENTS.filter(s => s.annee === annee);
   const hideNeutralized = cls === 'mcom1' && !isMCOM1Prev;
+  const hideB3Neutralized = cls === 'b3';
   const classMods = MODULES.filter(m => m.promo === promoMap[cls]
-    && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id)));
+    && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
+    && !(hideB3Neutralized && NEUTRALIZED_FOR_CURRENT_B3.has(m.id)));
 
   const missingByStudent = [];
   students.forEach(s => {
@@ -7973,7 +7980,8 @@ function buildAbsSidebar() {
     const isCCO = m.evalType === 'CCO';
     const isSoutenance = m.evalType === 'SOUTENANCE';
     const isOralBlanc = m.evalType === 'ORAL_BLANC';
-    const isDisabled = currentAbsPromo === 'MCOM1' && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id);
+    const isDisabled = (currentAbsPromo === 'MCOM1' && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
+      || (currentAbsPromo === 'B3' && NEUTRALIZED_FOR_CURRENT_B3.has(m.id));
     const tag = isDisabled
       ? `<span class="sidebar-pilier-tag pt-disabled" title="Module désactivé pour 2025/2026 — réactivable">DISABLED</span>`
       : isCertif
