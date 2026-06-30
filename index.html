@@ -5286,6 +5286,25 @@ async function deleteAirtableMapping(activity, promo) {
 // ── Commentaires généraux de bulletin ──────────────────────────────
 let bulletinComments = {}; // { studentId: commentaire }
 
+// Compte les modules où une note numérique est saisie mais sans commentaire.
+// Les statuts seuls (AJ/ANJ/Validé/Non acquis) sans note ne comptent pas.
+function countMissingModuleComments(studentId) {
+  const s = REAL_STUDENTS.find(x => x.id === studentId);
+  if (!s) return 0;
+  const mods = getModulesForStudent(s).filter(m =>
+    m.evalType !== 'ORAL_BLANC' && !m.isExtra &&
+    !(m.evalType === 'SOUTENANCE' && (m.promo === 'MCOM1' || m.promo === 'MCOM2'))
+  );
+  let n = 0;
+  mods.forEach(m => {
+    const g = grades[s.id + '_' + m.id] || {};
+    const hasNote = g.note !== '' && g.note !== undefined && g.note !== null && g.note !== false;
+    const hasComment = g.commentaire && String(g.commentaire).trim();
+    if (hasNote && !hasComment) n++;
+  });
+  return n;
+}
+
 async function loadBulletinComments() {
   try {
     const r = await fetch(SB_URL + '/rest/v1/bulletin_comments?select=*', {
@@ -5471,6 +5490,112 @@ function showBulletinCommentModal(studentId) {
       renderDashboard();
     }
   };
+}
+
+// ── Envoi du bulletin par email (popup copier-coller) ───────────────
+function showSendBulletinModal(studentId) {
+  const student = REAL_STUDENTS.find(s => s.id === studentId);
+  if (!student) return;
+  const email = getStudentEmail(student);
+  const bccList = EMAIL_BCC.join(', ');
+  const subject = '[Delta Business School] Ton bulletin 2025-2026';
+  const commentGen = (bulletinComments[studentId] || '').trim();
+  const body =
+`Bonjour ${student.prenom},
+
+Tu trouveras ci-joint ton bulletin pour l'année scolaire 2025-2026.${commentGen ? `
+
+${commentGen}` : ''}
+
+Si tu as la moindre question sur tes résultats, n'hésite pas à revenir vers nous.
+
+Bien à toi,
+L'équipe pédagogique Delta Business School`;
+
+  // Génère et télécharge le PDF (notes publiées uniquement)
+  const prevCS = currentStudent;
+  currentStudent = student;
+  try {
+    withStudentFilteredGrades(() => generatePDF(student));
+  } finally {
+    currentStudent = prevCS;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto';
+  const fieldStyle = 'background:#F8F8F6;border:1px solid #E8E8E8;border-radius:8px;padding:10px 12px;font-family:inherit;font-size:13px;color:#000;display:flex;align-items:center;justify-content:space-between;gap:10px';
+  const labelStyle = 'font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#666;margin-bottom:4px';
+  const copyBtnStyle = 'background:#000;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;flex-shrink:0';
+
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:28px;width:680px;max-width:95vw;margin-bottom:40px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+        <div>
+          <div style="font-size:16px;font-weight:700;color:#000">Envoyer le bulletin par email</div>
+          <div style="font-size:12px;color:#9090a0;margin-top:2px">${student.prenom} ${student.nom} · ${student.promo}</div>
+        </div>
+        <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9090a0;padding:4px 8px">✕</button>
+      </div>
+
+      <div style="background:#DCFCE7;border:1px solid #BBF7D0;border-radius:8px;padding:10px 14px;margin-bottom:18px;font-size:12px;color:#15803D">
+        ✓ Le bulletin PDF a été téléchargé. Tu peux l'attacher dans Gmail après avoir collé les éléments ci-dessous.
+      </div>
+
+      <div style="margin-bottom:12px">
+        <div style="${labelStyle}">Destinataire</div>
+        <div style="${fieldStyle}">
+          <span id="sb-to" style="font-family:monospace">${email}</span>
+          <button class="sb-copy" data-target="sb-to" style="${copyBtnStyle}">Copier</button>
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px">
+        <div style="${labelStyle}">Cci (copie cachée)</div>
+        <div style="${fieldStyle}">
+          <span id="sb-bcc" style="font-family:monospace;font-size:11px">${bccList}</span>
+          <button class="sb-copy" data-target="sb-bcc" style="${copyBtnStyle}">Copier</button>
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px">
+        <div style="${labelStyle}">Objet</div>
+        <div style="${fieldStyle}">
+          <span id="sb-subject">${subject}</span>
+          <button class="sb-copy" data-target="sb-subject" style="${copyBtnStyle}">Copier</button>
+        </div>
+      </div>
+
+      <div style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="${labelStyle}">Message</div>
+          <button class="sb-copy" data-target="sb-body" style="${copyBtnStyle}">Copier le message</button>
+        </div>
+        <textarea id="sb-body" readonly rows="11" style="width:100%;padding:12px;border:1px solid #E8E8E8;border-radius:8px;font-family:inherit;font-size:13px;line-height:1.5;color:#333;background:#F8F8F6;resize:vertical;box-sizing:border-box">${body.replace(/</g,'&lt;')}</textarea>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px">
+        <button onclick="this.closest('[style*=fixed]').remove()" style="background:#fff;border:1.5px solid #e8e8e8;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;color:#666;font-weight:600">Fermer</button>
+        <a href="https://mail.google.com/mail/u/0/#inbox?compose=new" target="_blank" rel="noopener" style="background:#000;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;cursor:pointer;font-weight:600;text-decoration:none;display:inline-block">Ouvrir Gmail</a>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelectorAll('.sb-copy').forEach(btn => {
+    btn.onclick = async () => {
+      const el = document.getElementById(btn.dataset.target);
+      const text = el.tagName === 'TEXTAREA' ? el.value : el.textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        const old = btn.textContent;
+        btn.textContent = '✓ Copié';
+        btn.style.background = '#15803D';
+        setTimeout(() => { btn.textContent = old; btn.style.background = '#000'; }, 1500);
+      } catch (e) {
+        showError('Copie échouée — sélectionne et copie manuellement');
+      }
+    };
+  });
 }
 
 // Charge les modules "Hors UE" depuis Supabase et les fusionne dans MODULES
@@ -7147,9 +7272,16 @@ function renderDashboard() {
         commentCell = `<span style="${baseStyle};background:#F0F0F0;color:#9090a0" title="Saisie impossible tant que plus de 4 notes manquent">Saisie impossible</span>`;
       }
 
+      // Commentaires de module manquants (note saisie sans commentaire)
+      const missingCom = countMissingModuleComments(s.id);
+      const missingComBadge = missingCom > 0
+        ? `<span title="${missingCom} module(s) noté(s) sans commentaire" style="display:inline-block;margin-left:6px;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;background:#FEF3C7;color:#92620A">${missingCom} comm. manquant${missingCom>1?'s':''}</span>`
+        : '';
+      const sendBtn = `<button onclick="showSendBulletinModal('${s.id}')" title="Préparer l'envoi du bulletin par email" style="display:inline-block;margin-left:6px;padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;background:#000;color:#fff;border:none;cursor:pointer">✉ Envoyer</button>`;
+
       html += `
         <td>${missing > 0 ? `<span class="dash-badge missing">${missing}</span>` : '<span style="color:#2D7A4A;font-size:13px">✓</span>'}</td>
-        <td>${commentCell}</td>
+        <td>${commentCell}${missingComBadge}${sendBtn}</td>
       </tr>`;
     });
 
@@ -8799,7 +8931,8 @@ function renderStudentGrilles(student) {
 }
 
 // ===== PDF =====
-function generatePDF(student) {
+function generatePDF(student, options) {
+  options = options || {};
   const {jsPDF} = window.jspdf;
   const doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
   const W = 210, M = 14, cW = 182;
@@ -9067,6 +9200,7 @@ function generatePDF(student) {
   doc.text('Simon Dusart — Directeur', M+cW, y+SIG_H+3, {align:'right'});
 
   drawFooter();
+  if (options.returnDoc) return doc;
   doc.save('Bulletin_'+student.nom+'_'+student.prenom+'_2025-2026.pdf');
 }
 
