@@ -7277,7 +7277,10 @@ function renderDashboard() {
       const missingComBadge = missingCom > 0
         ? `<span title="${missingCom} module(s) noté(s) sans commentaire" style="display:inline-block;margin-left:6px;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;background:#FEF3C7;color:#92620A">${missingCom} comm. manquant${missingCom>1?'s':''}</span>`
         : '';
-      const sendBtn = `<button onclick="showSendBulletinModal('${s.id}')" title="Préparer l'envoi du bulletin par email" style="display:inline-block;margin-left:6px;padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;background:#000;color:#fff;border:none;cursor:pointer">✉ Envoyer</button>`;
+      const sendDisabled = ['S08','S10'].includes(s.id);
+      const sendBtn = sendDisabled
+        ? `<span title="Bulletin désactivé — téléchargement bloqué côté étudiant" style="display:inline-block;margin-left:6px;padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;background:#FEE2E2;color:#B91C1C">Ne pas envoyer</span>`
+        : `<button onclick="showSendBulletinModal('${s.id}')" title="Préparer l'envoi du bulletin par email" style="display:inline-block;margin-left:6px;padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;background:#000;color:#fff;border:none;cursor:pointer">✉ Envoyer</button>`;
 
       html += `
         <td>${missing > 0 ? `<span class="dash-badge missing">${missing}</span>` : '<span style="color:#2D7A4A;font-size:13px">✓</span>'}</td>
