@@ -9303,20 +9303,18 @@ function generatePDF(student, options) {
     const promoKeyAbs = student.annee === 1 ? 'B1' : 'B2';
     const classModsAbs = MODULES.filter(m => m.promo === promoKeyAbs
       && (!m.restrictToStudents || m.restrictToStudents.includes(student.id)));
-    let totAJ = 0, totANJ = 0, hAJ = 0, hANJ = 0, totalHrs = 0;
+    let totAJ = 0, totANJ = 0, hAJ = 0, hANJ = 0;
     classModsAbs.forEach(m => {
       (attendanceSessions[m.id] || []).forEach(sess => {
         const key = m.id + '_' + sess.session_num + '_' + student.id;
         const status = attendanceData[key]?.status;
         const hrs = sess.session_hours || 0;
-        totalHrs += hrs;
         if (status === 'aj')  { totAJ++;  hAJ  += hrs; }
         if (status === 'anj') { totANJ++; hANJ += hrs; }
       });
     });
 
-    const showTotalHrs = student.annee === 1; // B1 only — B2 planning encore incomplet
-    const nbLinesAbs = (showTotalHrs ? 1 : 0) + 2;
+    const nbLinesAbs = 2; // AJ + ANJ (heures totales masquées pour B1 et B2)
     const headerHabs = 7;
     const lineHabs = 5;
     const padTopAbs = 2, padBotAbs = 4;
@@ -9336,13 +9334,6 @@ function generatePDF(student, options) {
     doc.text('Récapitulatif des absences', M+3, y + padTopAbs + 5);
 
     let yyAbs = y + padTopAbs + headerHabs + 3;
-    if (showTotalHrs) {
-      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(40);
-      doc.text('Heures totales :', M+5, yyAbs);
-      doc.setFont('helvetica','normal');
-      doc.text(totalHrs.toFixed(1) + ' h', M+60, yyAbs);
-      yyAbs += lineHabs;
-    }
     doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(146,98,10);
     doc.text('Absences justifiées :', M+5, yyAbs);
     doc.setFont('helvetica','normal'); doc.setTextColor(40);
