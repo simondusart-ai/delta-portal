@@ -9259,12 +9259,35 @@ function generatePDF(student, options) {
           else { statusLabel = 'Rattrapage'; statusColor = [192,48,48]; }
         }
       }
+
+      // Moyenne avant rattrapage si l'étudiant a un module remplacé dans ce pilier
+      const pilierMods = studentMods.filter(m => m.pilier === p);
+      const replacedSetPdf = getReplacedModuleIds(student.id, pilierMods);
+      let avgBeforeRat = null;
+      if (replacedSetPdf.size > 0) {
+        let bs = 0, bc = 0;
+        pilierMods.forEach(m => {
+          if (m.evalType === 'SOUTENANCE' || m.evalType === 'ORAL_BLANC') return;
+          if (m.replaces) return;
+          const g = grades[student.id + '_' + m.id] || {};
+          if (g.absence === 'ANJ') { bs += 0; bc++; }
+          else if (g.note !== '' && g.note !== undefined && g.note !== null) {
+            bs += parseFloat(g.note); bc++;
+          }
+        });
+        if (bc > 0) avgBeforeRat = bs / bc;
+      }
+
       doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(40);
       doc.text(label, M+5, yy);
       doc.setFont('helvetica','normal'); doc.setTextColor(40);
       doc.text(avgStr, M+60, yy);
       doc.setFont('helvetica','bold'); doc.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
       doc.text(statusLabel, M+100, yy);
+      if (avgBeforeRat !== null) {
+        doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(120);
+        doc.text('(avant rattrapage : ' + avgBeforeRat.toFixed(2) + ')', M+135, yy);
+      }
       yy += lineH;
     });
 
