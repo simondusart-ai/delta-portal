@@ -7194,8 +7194,10 @@ function renderDashboard() {
     // Count modules for this class
     const promoMap = {'b1':'B1','b2':'B2','b3':'B3','mcom1':'MCOM1','mcom2':'MCOM2'};
     const hideNeutralized = cls === 'mcom1' && !isMCOM1Prev;
+    const hideB3Neutralized = cls === 'b3';
     const classMods = MODULES.filter(m => m.promo === promoMap[cls]
-      && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id)));
+      && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
+      && !(hideB3Neutralized && NEUTRALIZED_FOR_CURRENT_B3.has(m.id)));
     const totalMods = classMods.length;
 
     let html = '';
