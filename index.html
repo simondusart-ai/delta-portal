@@ -4368,6 +4368,7 @@ function showMissingNotesDetail(cls) {
   students.forEach(s => {
     const missing = [];
     classMods.forEach(m => {
+      if (m.restrictToStudents && !m.restrictToStudents.includes(s.id)) return;
       const g = grades[s.id + '_' + m.id] || {};
       if (g.absence === 'AJ' || g.absence === 'ANJ') return;
       if (m.evalType === 'SOUTENANCE' && (m.promo === 'MCOM1' || m.promo === 'MCOM2')) return;
@@ -7171,6 +7172,7 @@ function renderDashboard() {
     let totalAJ = 0, totalANJ = 0, totalMissing = 0;
     students.forEach(s => {
       classMods.forEach(m => {
+        if (m.restrictToStudents && !m.restrictToStudents.includes(s.id)) return;
         const g = grades[s.id+'_'+m.id] || {};
         if (g.absence === 'AJ') totalAJ++;
         else if (g.absence === 'ANJ') totalANJ++;
@@ -7226,6 +7228,7 @@ function renderDashboard() {
       // Count AJ/ANJ/missing for this student (mêmes exclusions que le KPI global)
       let aj=0, anj=0, missing=0;
       classMods.forEach(m => {
+        if (m.restrictToStudents && !m.restrictToStudents.includes(s.id)) return;
         const g = grades[s.id+'_'+m.id] || {};
         if (g.absence === 'AJ') aj++;
         else if (g.absence === 'ANJ') anj++;
