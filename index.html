@@ -9298,6 +9298,64 @@ function generatePDF(student, options) {
     y += sectionH + 5;
   }
 
+  // ── Section "Récapitulatif des absences" (Bachelor 1 & 2 uniquement) ──
+  if (isB1B2pdf) {
+    const promoKeyAbs = student.annee === 1 ? 'B1' : 'B2';
+    const classModsAbs = MODULES.filter(m => m.promo === promoKeyAbs
+      && (!m.restrictToStudents || m.restrictToStudents.includes(student.id)));
+    let totAJ = 0, totANJ = 0, hAJ = 0, hANJ = 0, totalHrs = 0;
+    classModsAbs.forEach(m => {
+      (attendanceSessions[m.id] || []).forEach(sess => {
+        const key = m.id + '_' + sess.session_num + '_' + student.id;
+        const status = attendanceData[key]?.status;
+        const hrs = sess.session_hours || 0;
+        totalHrs += hrs;
+        if (status === 'aj')  { totAJ++;  hAJ  += hrs; }
+        if (status === 'anj') { totANJ++; hANJ += hrs; }
+      });
+    });
+
+    const showTotalHrs = student.annee === 1; // B1 only — B2 planning encore incomplet
+    const nbLinesAbs = (showTotalHrs ? 1 : 0) + 2;
+    const headerHabs = 7;
+    const lineHabs = 5;
+    const padTopAbs = 2, padBotAbs = 4;
+    const sectionHabs = padTopAbs + headerHabs + nbLinesAbs * lineHabs + padBotAbs;
+
+    if (y + sectionHabs + 6 > PAGE_BOTTOM) {
+      drawFooter();
+      doc.addPage();
+      pageNum++;
+      drawHeader(pageNum);
+      y = 42;
+    }
+
+    doc.setFillColor(245,245,243);
+    doc.roundedRect(M, y, cW, sectionHabs, 2, 2, 'FD');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(80);
+    doc.text('Récapitulatif des absences', M+3, y + padTopAbs + 5);
+
+    let yyAbs = y + padTopAbs + headerHabs + 3;
+    if (showTotalHrs) {
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(40);
+      doc.text('Heures totales :', M+5, yyAbs);
+      doc.setFont('helvetica','normal');
+      doc.text(totalHrs.toFixed(1) + ' h', M+60, yyAbs);
+      yyAbs += lineHabs;
+    }
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(146,98,10);
+    doc.text('Absences justifiées :', M+5, yyAbs);
+    doc.setFont('helvetica','normal'); doc.setTextColor(40);
+    doc.text(totAJ + ' (' + hAJ.toFixed(1) + ' h)', M+60, yyAbs);
+    yyAbs += lineHabs;
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(192,48,48);
+    doc.text('Absences non justifiées :', M+5, yyAbs);
+    doc.setFont('helvetica','normal'); doc.setTextColor(40);
+    doc.text(totANJ + ' (' + hANJ.toFixed(1) + ' h)', M+60, yyAbs);
+
+    y += sectionHabs + 5;
+  }
+
   // Commentaire général box — texte enregistré (ou "À venir" par défaut)
   const commentGeneral = (bulletinComments[student.id] || '').trim();
   doc.setFontSize(8);
