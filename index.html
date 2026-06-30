@@ -9164,18 +9164,11 @@ function generatePDF(student, options) {
   // (signature placed after commentaire général below)
   y += 8;
 
-  // ── Section "Moyennes par bloc" ──
-  const isMCOMpdf = student.annee === 4 || student.annee === 5;
-  const isB3pdf = student.annee === 3;
-  const piliersAll = isMCOMpdf
-    ? ['BLOC 1','BLOC 2','BLOC 3','BLOC 4']
-    : isB3pdf
-      ? ['BLOC 1','BLOC 2','BLOC 3','TRANSVERSE']
-      : ['Product','Operations','Growth & Sales','Data','Other'];
-  const pilierLabelsPdf = (isMCOMpdf || isB3pdf)
-    ? {'BLOC 1':'Bloc 1','BLOC 2':'Bloc 2','BLOC 3':'Bloc 3','BLOC 4':'Bloc 4','TRANSVERSE':'Transverse'}
-    : {'Product':'Product','Operations':'Operations','Growth & Sales':'Growth & Sales','Data':'Data','Other':'Autre'};
-  const piliersPresent = piliersAll.filter(p => studentMods.some(m => m.pilier === p));
+  // ── Section "Moyennes par bloc" (Bachelor 1 & 2 uniquement) ──
+  const isB1B2pdf = student.annee === 1 || student.annee === 2;
+  const piliersAll = ['Product','Operations','Growth & Sales','Data','Other'];
+  const pilierLabelsPdf = {'Product':'Product','Operations':'Operations','Growth & Sales':'Growth & Sales','Data':'Data','Other':'Autre'};
+  const piliersPresent = isB1B2pdf ? piliersAll.filter(p => studentMods.some(m => m.pilier === p)) : [];
 
   if (piliersPresent.length > 0) {
     const headerH = 7;
