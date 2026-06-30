@@ -4147,7 +4147,9 @@ function showBlocDetail(studentId, cls, singlePilier) {
     const mcomPromos2 = isMCOM ? (student.annee === 5 ? ['MCOM1','MCOM2'] : ['MCOM1']) : null;
     const mods = MODULES.filter(m => m.pilier === pilier && (
       isMCOM ? mcomPromos2.includes(m.promo) : m.promo === promoKey
-    ) && (!m.restrictToStudents || m.restrictToStudents.includes(studentId)));
+    ) && (!m.restrictToStudents || m.restrictToStudents.includes(studentId))
+      && !(student.annee === 4 && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
+      && !(student.annee === 3 && NEUTRALIZED_FOR_CURRENT_B3.has(m.id)));
     if (!mods.length) return;
 
     const pa = getPilierAvg(studentId, pilier);
