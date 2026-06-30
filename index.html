@@ -4096,21 +4096,28 @@ function showBlocDetail(studentId, cls, singlePilier) {
   }
 
   // Helper: render a group of modules with subtotal
-  function renderModGroup(groupMods, groupLabel, weight) {
+  function renderModGroup(groupMods, groupLabel, weight, replacedSet) {
+    replacedSet = replacedSet || new Set();
     if (!groupMods.length) return '';
     let sum = 0, count = 0, rows = '';
     groupMods.forEach(m => {
       const g = grades[studentId + '_' + m.id] || {};
       const et = m.evalType || 'CC';
       const { str, color } = getNoteDisplay(g, et);
-      // Count for avg
-      if (g.absence === 'ANJ') { sum += 0; count++; }
-      else if (g.note !== '' && g.note !== undefined && g.note !== null && et !== 'SOUTENANCE') {
-        sum += parseFloat(g.note); count++;
+      const isReplaced = replacedSet.has(m.id);
+      // Count for avg — skip the original if replaced by a rattrapage
+      if (!isReplaced) {
+        if (g.absence === 'ANJ') { sum += 0; count++; }
+        else if (g.note !== '' && g.note !== undefined && g.note !== null && et !== 'SOUTENANCE') {
+          sum += parseFloat(g.note); count++;
+        }
       }
+      const noteCell = isReplaced
+        ? `<td style="padding:4px 0;text-align:right;font-size:12px;white-space:nowrap"><span style="color:#c0c0c0;text-decoration:line-through">${str}</span> <span style="font-size:9px;color:#9090a0;font-style:italic">remplacée</span></td>`
+        : `<td style="padding:4px 0;text-align:right;font-weight:700;color:${color};font-size:12px;white-space:nowrap">${str}</td>`;
       rows += `<tr style="border-top:1px solid #f0f0f0">
         <td style="padding:4px 0 4px 12px;color:#555;font-size:11px;line-height:1.3">${m.nom}</td>
-        <td style="padding:4px 0;text-align:right;font-weight:700;color:${color};font-size:12px;white-space:nowrap">${str}</td>
+        ${noteCell}
       </tr>`;
     });
     const subtotalStr = count > 0 ? (sum / count).toFixed(2) : null;
@@ -4148,10 +4155,31 @@ function showBlocDetail(studentId, cls, singlePilier) {
       : pa.blocStatus === 'rattrapage' ? '↻ Rattrapage' : '⏳ En cours';
     const avgStr = pa && (pa.count > 0 || pa.filled > 0) ? pa.avg.toFixed(2) : '—';
 
+    // Moyenne avant rattrapage : ne s'affiche que si un module de ce pilier est remplacé par un rattrapage déjà noté
+    const replacedSet = getReplacedModuleIds(studentId, mods);
+    let avgBeforeRat = null;
+    if (replacedSet.size > 0) {
+      let bSum = 0, bCount = 0;
+      mods.forEach(m => {
+        if (m.evalType === 'SOUTENANCE' || m.evalType === 'ORAL_BLANC') return;
+        if (m.replaces) return; // exclure le rattrapage lui-même
+        const g = grades[studentId + '_' + m.id] || {};
+        if (g.absence === 'ANJ') { bSum += 0; bCount++; }
+        else if (g.note !== '' && g.note !== undefined && g.note !== null) {
+          bSum += parseFloat(g.note); bCount++;
+        }
+      });
+      if (bCount > 0) avgBeforeRat = bSum / bCount;
+    }
+    const avgBeforeStr = avgBeforeRat !== null
+      ? `<span style="font-size:11px;color:#9090a0;font-style:italic" title="Moyenne du bloc en utilisant la note initiale au lieu de celle du rattrapage">avant rattrapage : ${avgBeforeRat.toFixed(2)}</span>`
+      : '';
+
     content += `<div style="margin-bottom:20px;padding:16px;background:#f8f8f6;border-radius:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
         <div style="font-size:14px;font-weight:700;color:#000">${label}</div>
-        <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          ${avgBeforeStr}
           <span style="font-size:18px;font-weight:800;color:${statusColor}">${avgStr}</span>
           <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${statusColor}22;color:${statusColor}">${statusLabel}</span>
         </div>
@@ -4327,7 +4355,7 @@ function showBlocDetail(studentId, cls, singlePilier) {
       }
     } else {
       // B1/B2: all CC
-      content += renderModGroup(mods.filter(m => m.evalType !== 'ORAL_BLANC'), 'CC', null);
+      content += renderModGroup(mods.filter(m => m.evalType !== 'ORAL_BLANC'), 'CC', null, replacedSet);
     }
 
     content += `</div>`;
