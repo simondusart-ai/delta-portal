@@ -3043,6 +3043,7 @@ function selectModule(id) {
 
 function getStudentsForModule(m) {
   return REAL_STUDENTS.filter(s=>{
+    if (m.restrictToStudents && !m.restrictToStudents.includes(s.id)) return false;
     if (m.promo==='B1') return s.annee===1;
     if (m.promo==='B2') return s.annee===2;
     if (m.promo==='B3') return s.annee===3;
@@ -8081,7 +8082,10 @@ function selectAbsModule(moduleId) {
 function renderAbsTable() {
   if (!currentAbsModule) return;
   const m = currentAbsModule;
-  const students = STUDENTS.filter(s => currentAbsPromo === 'B1' ? s.annee === 1 : currentAbsPromo === 'B2' ? s.annee === 2 : currentAbsPromo === 'B3' ? s.annee === 3 : currentAbsPromo === 'MCOM1' ? s.annee === 4 : currentAbsPromo === 'MCOM2' ? s.annee === 5 : false);
+  const students = STUDENTS.filter(s => {
+    if (m.restrictToStudents && !m.restrictToStudents.includes(s.id)) return false;
+    return currentAbsPromo === 'B1' ? s.annee === 1 : currentAbsPromo === 'B2' ? s.annee === 2 : currentAbsPromo === 'B3' ? s.annee === 3 : currentAbsPromo === 'MCOM1' ? s.annee === 4 : currentAbsPromo === 'MCOM2' ? s.annee === 5 : false;
+  });
   const sessions = (attendanceSessions[m.id] || []).slice().sort((a, b) => {
     // Tri chronologique : sessions sans date à la fin, puis par n° en cas d'égalité
     if (!a.session_date && !b.session_date) return a.session_num - b.session_num;
