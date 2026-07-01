@@ -7253,6 +7253,7 @@ function renderDashboard() {
       if (hasMods) html += `<th>${pilierLabels[p]}</th>`;
     });
     html += '<th style="color:#9090a0">Manquantes</th>';
+    html += '<th style="color:#9090a0">Non publiées</th>';
     html += '<th>Commentaire général</th>';
     html += '</tr></thead><tbody>';
 
@@ -7275,11 +7276,12 @@ function renderDashboard() {
       const avgColor = filled > 0 ? (avg >= 14 ? '#7B3FA0' : avg >= 10 ? '#2D7A4A' : '#C03030') : '#9090a0';
       const mention = filled > 0 ? getMention(avg) : '';
 
-      // Count AJ/ANJ/missing for this student (mêmes exclusions que le KPI global)
-      let aj=0, anj=0, missing=0;
+      // Count AJ/ANJ/missing/unpublished for this student (mêmes exclusions que le KPI global)
+      let aj=0, anj=0, missing=0, unpublished=0;
       classMods.forEach(m => {
         if (m.restrictToStudents && !m.restrictToStudents.includes(s.id)) return;
         const g = grades[s.id+'_'+m.id] || {};
+        if (g.published === false) unpublished++;
         if (g.absence === 'AJ') aj++;
         else if (g.absence === 'ANJ') anj++;
         else if (m.evalType === 'SOUTENANCE' && (m.promo === 'MCOM1' || m.promo === 'MCOM2')) { /* skip */ }
@@ -7354,8 +7356,13 @@ function renderDashboard() {
         ? `<span title="Bulletin désactivé — téléchargement bloqué côté étudiant" style="display:inline-block;margin-left:6px;padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;background:#FEE2E2;color:#B91C1C">Ne pas envoyer</span>`
         : `<button onclick="showSendBulletinModal('${s.id}')" title="Préparer l'envoi du bulletin par email" style="display:inline-block;margin-left:6px;padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;background:#000;color:#fff;border:none;cursor:pointer">✉ Envoyer</button>`;
 
+      const unpublishedCell = unpublished > 0
+        ? `<span title="${unpublished} note(s) saisie(s) mais pas encore publiée(s)" style="display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;background:#FEF3C7;color:#92620A">${unpublished}</span>`
+        : '<span style="color:#2D7A4A;font-size:13px">✓</span>';
+
       html += `
         <td>${missing > 0 ? `<span class="dash-badge missing">${missing}</span>` : '<span style="color:#2D7A4A;font-size:13px">✓</span>'}</td>
+        <td>${unpublishedCell}</td>
         <td>${commentCell}${missingComBadge}${sendBtn}</td>
       </tr>`;
     });
