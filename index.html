@@ -4130,8 +4130,12 @@ function showBlocDetail(studentId, cls, singlePilier) {
         : m.excludeFromAvg
           ? `<td style="padding:4px 0;text-align:right;font-weight:700;color:${color};font-size:12px;white-space:nowrap">${str} <span style="font-size:9px;color:#9090a0;font-style:italic;font-weight:400">hors moyenne</span></td>`
           : `<td style="padding:4px 0;text-align:right;font-weight:700;color:${color};font-size:12px;white-space:nowrap">${str}</td>`;
+      // Tag année (MCOM1/MCOM2) : visible uniquement quand l'étudiant suit les deux années (MCOM2, annee=5)
+      const yearTag = (student.annee === 5 && (m.promo === 'MCOM1' || m.promo === 'MCOM2'))
+        ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;letter-spacing:0.3px;background:${m.promo === 'MCOM1' ? '#EDE9FE' : '#FDE68A'};color:${m.promo === 'MCOM1' ? '#6D28D9' : '#78350F'}">${m.promo}</span>`
+        : '';
       rows += `<tr style="border-top:1px solid #f0f0f0">
-        <td style="padding:4px 0 4px 12px;color:#555;font-size:11px;line-height:1.3">${m.nom}</td>
+        <td style="padding:4px 0 4px 12px;color:#555;font-size:11px;line-height:1.3">${m.nom}${yearTag}</td>
         ${noteCell}
       </tr>`;
     });
@@ -4407,9 +4411,12 @@ function showMissingNotesDetail(cls) {
     : REAL_STUDENTS.filter(s => s.annee === annee);
   const hideNeutralized = cls === 'mcom1' && !isMCOM1Prev;
   const hideB3Neutralized = cls === 'b3';
-  const classMods = MODULES.filter(m => m.promo === promoMap[cls]
-    && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
-    && !(hideB3Neutralized && NEUTRALIZED_FOR_CURRENT_B3.has(m.id)));
+  const classMods = MODULES.filter(m => {
+    const promoOk = cls === 'mcom2' ? (m.promo === 'MCOM1' || m.promo === 'MCOM2') : m.promo === promoMap[cls];
+    return promoOk
+      && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
+      && !(hideB3Neutralized && NEUTRALIZED_FOR_CURRENT_B3.has(m.id));
+  });
 
   const missingByStudent = [];
   students.forEach(s => {
@@ -4438,8 +4445,11 @@ function showMissingNotesDetail(cls) {
       let modRows = '';
       missing.forEach(m => {
         const tag = m.pilier || m.ueName || '';
+        const yearTag = cls === 'mcom2' && (m.promo === 'MCOM1' || m.promo === 'MCOM2')
+          ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;letter-spacing:0.3px;background:${m.promo === 'MCOM1' ? '#EDE9FE' : '#FDE68A'};color:${m.promo === 'MCOM1' ? '#6D28D9' : '#78350F'}">${m.promo}</span>`
+          : '';
         modRows += `<tr style="border-top:1px solid #f0f0f0">
-          <td style="padding:5px 0 5px 12px;color:#555;font-size:11px;line-height:1.3">${m.nom}</td>
+          <td style="padding:5px 0 5px 12px;color:#555;font-size:11px;line-height:1.3">${m.nom}${yearTag}</td>
           <td style="padding:5px 0;text-align:right;color:#9090a0;font-size:10px;white-space:nowrap;text-transform:uppercase;letter-spacing:0.4px">${tag}</td>
         </tr>`;
       });
@@ -4481,9 +4491,12 @@ function showUnpublishedNotesDetail(studentId, cls) {
   const isMCOM1Prev = cls === 'mcom1' && mcom1Session === 'prev';
   const hideNeutralized = cls === 'mcom1' && !isMCOM1Prev;
   const hideB3Neutralized = cls === 'b3';
-  const classMods = MODULES.filter(m => m.promo === promoMap[cls]
-    && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
-    && !(hideB3Neutralized && NEUTRALIZED_FOR_CURRENT_B3.has(m.id)));
+  const classMods = MODULES.filter(m => {
+    const promoOk = cls === 'mcom2' ? (m.promo === 'MCOM1' || m.promo === 'MCOM2') : m.promo === promoMap[cls];
+    return promoOk
+      && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
+      && !(hideB3Neutralized && NEUTRALIZED_FOR_CURRENT_B3.has(m.id));
+  });
 
   const unpubMods = [];
   classMods.forEach(m => {
@@ -4499,8 +4512,11 @@ function showUnpublishedNotesDetail(studentId, cls) {
     let modRows = '';
     unpubMods.forEach(m => {
       const tag = m.pilier || m.ueName || '';
+      const yearTag = cls === 'mcom2' && (m.promo === 'MCOM1' || m.promo === 'MCOM2')
+        ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;letter-spacing:0.3px;background:${m.promo === 'MCOM1' ? '#EDE9FE' : '#FDE68A'};color:${m.promo === 'MCOM1' ? '#6D28D9' : '#78350F'}">${m.promo}</span>`
+        : '';
       modRows += `<tr style="border-top:1px solid #f0f0f0">
-        <td style="padding:5px 0 5px 12px;color:#555;font-size:11px;line-height:1.3">${m.nom}</td>
+        <td style="padding:5px 0 5px 12px;color:#555;font-size:11px;line-height:1.3">${m.nom}${yearTag}</td>
         <td style="padding:5px 0;text-align:right;color:#9090a0;font-size:10px;white-space:nowrap;text-transform:uppercase;letter-spacing:0.4px">${tag}</td>
       </tr>`;
     });
@@ -7262,9 +7278,13 @@ function renderDashboard() {
     const promoMap = {'b1':'B1','b2':'B2','b3':'B3','mcom1':'MCOM1','mcom2':'MCOM2'};
     const hideNeutralized = cls === 'mcom1' && !isMCOM1Prev;
     const hideB3Neutralized = cls === 'b3';
-    const classMods = MODULES.filter(m => m.promo === promoMap[cls]
-      && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
-      && !(hideB3Neutralized && NEUTRALIZED_FOR_CURRENT_B3.has(m.id)));
+    const classMods = MODULES.filter(m => {
+      // MCOM2 : les étudiants suivent leurs modules Y1 (MCOM1) + Y2 (MCOM2)
+      const promoOk = cls === 'mcom2' ? (m.promo === 'MCOM1' || m.promo === 'MCOM2') : m.promo === promoMap[cls];
+      return promoOk
+        && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
+        && !(hideB3Neutralized && NEUTRALIZED_FOR_CURRENT_B3.has(m.id));
+    });
     const totalMods = classMods.length;
 
     let html = '';
