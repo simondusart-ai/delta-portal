@@ -4472,6 +4472,60 @@ function showMissingNotesDetail(cls) {
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
+function showUnpublishedNotesDetail(studentId, cls) {
+  const student = REAL_STUDENTS.find(s => s.id === studentId);
+  if (!student) return;
+  const promoMap = {'b1':'B1','b2':'B2','b3':'B3','mcom1':'MCOM1','mcom2':'MCOM2'};
+  const mcom1SessionEl = document.getElementById('mcom1-session-select');
+  const mcom1Session = mcom1SessionEl ? mcom1SessionEl.value : 'current';
+  const isMCOM1Prev = cls === 'mcom1' && mcom1Session === 'prev';
+  const hideNeutralized = cls === 'mcom1' && !isMCOM1Prev;
+  const hideB3Neutralized = cls === 'b3';
+  const classMods = MODULES.filter(m => m.promo === promoMap[cls]
+    && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
+    && !(hideB3Neutralized && NEUTRALIZED_FOR_CURRENT_B3.has(m.id)));
+
+  const unpubMods = [];
+  classMods.forEach(m => {
+    if (m.restrictToStudents && !m.restrictToStudents.includes(studentId)) return;
+    const g = grades[studentId + '_' + m.id] || {};
+    if (g.published === false) unpubMods.push(m);
+  });
+
+  let content = '';
+  if (unpubMods.length === 0) {
+    content = '<div style="color:#9090a0;font-style:italic;text-align:center;padding:24px">Toutes les notes sont publiées 🎉</div>';
+  } else {
+    let modRows = '';
+    unpubMods.forEach(m => {
+      const tag = m.pilier || m.ueName || '';
+      modRows += `<tr style="border-top:1px solid #f0f0f0">
+        <td style="padding:5px 0 5px 12px;color:#555;font-size:11px;line-height:1.3">${m.nom}</td>
+        <td style="padding:5px 0;text-align:right;color:#9090a0;font-size:10px;white-space:nowrap;text-transform:uppercase;letter-spacing:0.4px">${tag}</td>
+      </tr>`;
+    });
+    content = `<div style="padding:14px 16px;background:#f8f8f6;border-radius:10px">
+      <table style="width:100%;border-collapse:collapse">${modRows}</table>
+    </div>`;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:28px;width:520px;max-width:95vw;max-height:85vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div>
+          <div style="font-size:16px;font-weight:700;color:#000">Notes non publiées</div>
+          <div style="font-size:12px;color:#9090a0;margin-top:2px">${student.prenom} ${student.nom} · ${unpubMods.length} note${unpubMods.length > 1 ? 's' : ''} en brouillon</div>
+        </div>
+        <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9090a0;padding:4px 8px">✕</button>
+      </div>
+      ${content}
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
 function getPilierAvg(studentId, pilier) {
   const student = STUDENTS.find(s => s.id === studentId);
   // MCOM students: delegate entirely to getMCOMBlocAvg
@@ -7357,7 +7411,10 @@ function renderDashboard() {
         : `<button onclick="showSendBulletinModal('${s.id}')" title="Préparer l'envoi du bulletin par email" style="display:inline-block;margin-left:6px;padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;background:#000;color:#fff;border:none;cursor:pointer">✉ Envoyer</button>`;
 
       const unpublishedCell = unpublished > 0
-        ? `<span title="${unpublished} note(s) saisie(s) mais pas encore publiée(s)" style="display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;background:#FEF3C7;color:#92620A">${unpublished}</span>`
+        ? `<div style="display:flex;align-items:center;gap:6px">
+            <span title="${unpublished} note(s) saisie(s) mais pas encore publiée(s)" style="display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;background:#FEF3C7;color:#92620A">${unpublished}</span>
+            <button onclick="showUnpublishedNotesDetail('${s.id}','${cls}')" style="background:none;border:none;cursor:pointer;font-size:13px;color:#9090a0;padding:0;line-height:1" title="Voir le détail des notes non publiées">🔍</button>
+          </div>`
         : '<span style="color:#2D7A4A;font-size:13px">✓</span>';
 
       html += `
