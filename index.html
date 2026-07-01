@@ -2050,7 +2050,7 @@ let MODULES = [
   // TRANSVERSE
   {id:'BT-M1',ue:'TRANSVERSE',ueName:"Compétences transverses",pilier:'TRANSVERSE',nom:'Anglais',heures:21,promo:'B3',evalType:'CC'},
   {id:'BT-M2',ue:'TRANSVERSE',ueName:"Compétences transverses",pilier:'TRANSVERSE',nom:"Techniques d'argumentation et de négociation",heures:7,promo:'B3',evalType:'CC'},
-  {id:'BT-M3',ue:'TRANSVERSE',ueName:"Compétences transverses",pilier:'TRANSVERSE',nom:'Préparation soutenance finale',heures:0,promo:'B3',evalType:'CC'},
+  {id:'BT-M3',ue:'TRANSVERSE',ueName:"Compétences transverses",pilier:'TRANSVERSE',nom:'Préparation soutenance finale',heures:0,promo:'B3',evalType:'CC',excludeFromAvg:true},
 
   // ── MASTÈRE MCOM ──
   // BLOC 1 — MCOM1
@@ -3830,6 +3830,12 @@ function getStudentAvg(student) {
     if (replaced.has(m.id)) return; // note remplacée par un rattrapage
     const k=student.id+'_'+m.id;
     const g=grades[k]||{};
+    if (m.excludeFromAvg) {
+      // Module comptabilisé pour le suivi mais neutre dans la moyenne
+      if (g.absence==='AJ' || g.absence==='ANJ' || g.valide ||
+          (g.note!==''&&g.note!==undefined&&g.note!==null)) filled++;
+      return;
+    }
     if (g.absence==='AJ') { filled++; }
     else if (g.absence==='ANJ') { filled++; sum+=0; count++; }
     else if (g.note!==''&&g.note!==undefined&&g.note!==null) { filled++; sum+=parseFloat(g.note); count++; }
@@ -4112,8 +4118,8 @@ function showBlocDetail(studentId, cls, singlePilier) {
       const et = m.evalType || 'CC';
       const { str, color } = getNoteDisplay(g, et);
       const isReplaced = replacedSet.has(m.id);
-      // Count for avg — skip the original if replaced by a rattrapage
-      if (!isReplaced) {
+      // Count for avg — skip the original if replaced by a rattrapage, ou si module exclu du calcul
+      if (!isReplaced && !m.excludeFromAvg) {
         if (g.absence === 'ANJ') { sum += 0; count++; }
         else if (g.note !== '' && g.note !== undefined && g.note !== null && et !== 'SOUTENANCE') {
           sum += parseFloat(g.note); count++;
@@ -4121,7 +4127,9 @@ function showBlocDetail(studentId, cls, singlePilier) {
       }
       const noteCell = isReplaced
         ? `<td style="padding:4px 0;text-align:right;font-size:12px;white-space:nowrap"><span style="color:#c0c0c0;text-decoration:line-through">${str}</span> <span style="font-size:9px;color:#9090a0;font-style:italic">remplacée</span></td>`
-        : `<td style="padding:4px 0;text-align:right;font-weight:700;color:${color};font-size:12px;white-space:nowrap">${str}</td>`;
+        : m.excludeFromAvg
+          ? `<td style="padding:4px 0;text-align:right;font-weight:700;color:${color};font-size:12px;white-space:nowrap">${str} <span style="font-size:9px;color:#9090a0;font-style:italic;font-weight:400">hors moyenne</span></td>`
+          : `<td style="padding:4px 0;text-align:right;font-weight:700;color:${color};font-size:12px;white-space:nowrap">${str}</td>`;
       rows += `<tr style="border-top:1px solid #f0f0f0">
         <td style="padding:4px 0 4px 12px;color:#555;font-size:11px;line-height:1.3">${m.nom}</td>
         ${noteCell}
@@ -4501,6 +4509,7 @@ function getPilierAvg(studentId, pilier) {
   mods.forEach(m => {
     if (m.evalType === 'SOUTENANCE') return;
     if (m.evalType === 'ORAL_BLANC') return;
+    if (m.excludeFromAvg) return; // module suivi mais neutre dans la moyenne
     if (replacedInPilier.has(m.id)) return; // note remplacée par un rattrapage
     // B3: only CERTIF notes count as the bloc average (art. 18 & 25 EIMP)
     if (isB3Student && m.evalType !== 'CERTIF') return;
