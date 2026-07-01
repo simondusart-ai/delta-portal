@@ -2094,6 +2094,7 @@ let MODULES = [
   {id:'MC2-B2-4',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:'Prise de parole & rhétorique',ref:'Savoir communiquer',heures:14,promo:'MCOM2',evalType:'CC'},
   {id:'MC2-B2-5',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:'Personal Branding',ref:'Communication digitale',heures:17,promo:'MCOM2',evalType:'CC'},
   {id:'MC2-B2-CCO',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:'Partiel fin de bloc 2',ref:'',heures:0,promo:'MCOM2',evalType:'CCO',isCC:true},
+  {id:'MC2-B2-CCO-RAT',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:'Rattrapage Partiel fin de bloc 2',ref:'',heures:0,promo:'MCOM2',evalType:'CCO',isCC:true,restrictToStudents:['M07'],replaces:'MC2-B2-CCO'},
   {id:'MC2-B2-C2',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:'C2 — Partie 2 : Offre commerciale',ref:'',heures:0,promo:'MCOM2',evalType:'CERTIF',isCertif:true},
   {id:'MC2-B2-ORAL',ue:'BLOC2',ueName:"Politique commerciale",pilier:'BLOC 2',nom:"Oral fin de bloc 2 - Offre commerciale en réponse à un AO",ref:'',heures:0,promo:'MCOM2',evalType:'SOUTENANCE',isSoutenance:true,nbCompetences:6},
   // BLOC 3 — MCOM2
@@ -3968,10 +3969,13 @@ function getMCOMBlocAvg(studentId, pilier) {
   let ccoSum = 0, ccoCount = 0;
   let certifSum = 0, certifCount = 0;
 
+  const replacedMCOM = getReplacedModuleIds(studentId, allMCOM);
+
   allMCOM.forEach(m => {
     const k = studentId + '_' + m.id;
     const g = grades[k] || {};
     if (m.evalType === 'SOUTENANCE') return; // orals aggregated separately below
+    if (replacedMCOM.has(m.id)) return; // note remplacée par un rattrapage
     if (g.absence === 'AJ') return;
     const note = g.note !== undefined && g.note !== '' && g.note !== null ? parseFloat(g.note) : null;
     if (note === null) return;
