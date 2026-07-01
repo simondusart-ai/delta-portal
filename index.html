@@ -3495,6 +3495,54 @@ async function setGradePublished(studentId, moduleId, published) {
   }
 }
 
+async function publishAllDraftsForStudent(studentId, cls) {
+  const student = REAL_STUDENTS.find(s => s.id === studentId);
+  if (!student) return;
+  const promoMap = {'b1':'B1','b2':'B2','b3':'B3','mcom1':'MCOM1','mcom2':'MCOM2'};
+  const mcom1SessionEl = document.getElementById('mcom1-session-select');
+  const mcom1Session = mcom1SessionEl ? mcom1SessionEl.value : 'current';
+  const isMCOM1Prev = cls === 'mcom1' && mcom1Session === 'prev';
+  const hideNeutralized = cls === 'mcom1' && !isMCOM1Prev;
+  const hideB3Neutralized = cls === 'b3';
+  const classMods = MODULES.filter(m => {
+    const promoOk = cls === 'mcom2' ? (m.promo === 'MCOM1' || m.promo === 'MCOM2') : m.promo === promoMap[cls];
+    return promoOk
+      && !(hideNeutralized && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
+      && !(hideB3Neutralized && NEUTRALIZED_FOR_CURRENT_B3.has(m.id));
+  });
+
+  const rows = [];
+  classMods.forEach(m => {
+    if (m.restrictToStudents && !m.restrictToStudents.includes(studentId)) return;
+    const g = grades[studentId + '_' + m.id];
+    if (!g) return;
+    if (g.published !== false) return;
+    rows.push({
+      student_id: studentId,
+      module_id: m.id,
+      published: true,
+      updated_at: new Date().toISOString()
+    });
+  });
+
+  if (!rows.length) { showSuccess('Aucun brouillon à publier.'); return; }
+  if (!confirm(`Publier ${rows.length} note${rows.length>1?'s':''} pour ${student.prenom} ${student.nom} ? Elles deviendront visibles côté étudiant.`)) return;
+
+  showLoader(`Publication de ${rows.length} note${rows.length>1?'s':''}…`);
+  const ok = await sbUpsert('grades', rows);
+  hideLoader();
+  if (ok) {
+    rows.forEach(r => {
+      const k = r.student_id + '_' + r.module_id;
+      if (grades[k]) grades[k] = { ...grades[k], published: true };
+    });
+    showSuccess(`${rows.length} note${rows.length>1?'s':''} publiée${rows.length>1?'s':''} pour ${student.prenom} ${student.nom}.`);
+    renderDashboard();
+  } else {
+    showError('Erreur lors de la publication. Réessayez.');
+  }
+}
+
 async function publishAllDrafts() {
   if (!currentModule) return;
   const students = getStudentsForModule(currentModule);
@@ -7435,9 +7483,12 @@ function renderDashboard() {
         : `<button onclick="showSendBulletinModal('${s.id}')" title="Préparer l'envoi du bulletin par email" style="display:inline-block;margin-left:6px;padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;background:#000;color:#fff;border:none;cursor:pointer">✉ Envoyer</button>`;
 
       const unpublishedCell = unpublished > 0
-        ? `<div style="display:flex;align-items:center;gap:6px">
-            <span title="${unpublished} note(s) saisie(s) mais pas encore publiée(s)" style="display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;background:#FEF3C7;color:#92620A">${unpublished}</span>
-            <button onclick="showUnpublishedNotesDetail('${s.id}','${cls}')" style="background:none;border:none;cursor:pointer;font-size:13px;color:#9090a0;padding:0;line-height:1" title="Voir le détail des notes non publiées">🔍</button>
+        ? `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span title="${unpublished} note(s) saisie(s) mais pas encore publiée(s)" style="display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;background:#FEF3C7;color:#92620A">${unpublished}</span>
+              <button onclick="showUnpublishedNotesDetail('${s.id}','${cls}')" style="background:none;border:none;cursor:pointer;font-size:13px;color:#9090a0;padding:0;line-height:1" title="Voir le détail des notes non publiées">🔍</button>
+            </div>
+            <button onclick="publishAllDraftsForStudent('${s.id}','${cls}')" style="background:#000;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;cursor:pointer" title="Publier toutes les notes non publiées de cet étudiant">Publier all</button>
           </div>`
         : '<span style="color:#2D7A4A;font-size:13px">✓</span>';
 
