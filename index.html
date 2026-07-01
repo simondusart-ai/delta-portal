@@ -1319,7 +1319,7 @@ tbody tr:hover td { background: var(--blanc); }
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>Nom</th><th>Identifiant</th><th>Mot de passe</th><th>Email</th><th></th>
+                <th>Nom</th><th>Identifiant</th><th>Mot de passe</th><th>Email</th><th>Dernière connexion</th><th></th>
               </tr></thead>
               <tbody id="admins-tbody"></tbody>
             </table>
@@ -2878,6 +2878,18 @@ async function doLogin() {
   const acct = ADMIN_ACCOUNTS.find(a => a.login === u && a.password === p);
   if (acct) {
     currentAdminLogin = acct.login;
+    // Enregistre last_login en base (silencieux — si la colonne n'existe pas encore, on ignore)
+    (async () => {
+      try {
+        const nowIso = new Date().toISOString();
+        await fetch(SB_URL + '/rest/v1/admin_accounts?id=eq.' + acct.id, {
+          method: 'PATCH',
+          headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ last_login: nowIso })
+        });
+        acct.last_login = nowIso;
+      } catch(e) { console.warn('[admin last_login]', e); }
+    })();
     document.getElementById('login-screen').style.display='none';
     document.getElementById('admin-app').style.display='block';
     await initAdmin();
@@ -3737,18 +3749,24 @@ async function resetStudentPassword(code) {
 function renderAdminsTable() {
   const tbody = document.getElementById('admins-tbody');
   if (!tbody) return;
-  tbody.innerHTML = ADMIN_ACCOUNTS.map((a, i) => `
+  tbody.innerHTML = ADMIN_ACCOUNTS.map((a, i) => {
+    const lastLoginStr = a.last_login
+      ? new Date(a.last_login).toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit',year:'numeric'})
+      : '<span style="color:#C0C0C0">Jamais</span>';
+    return `
     <tr>
       <td style="font-weight:600">${a.name}</td>
       <td><span style="font-family:monospace;background:#f0f0f0;padding:2px 8px;border-radius:4px;font-size:12px">${a.login}</span></td>
       <td><span style="font-family:monospace;color:#9090a0;font-size:12px">${a.password}</span></td>
       <td style="font-size:12px;color:#9090a0">${a.email||'—'}</td>
+      <td style="font-size:12px;color:#6B6B6B">${lastLoginStr}</td>
       <td>
         ${ADMIN_ACCOUNTS.length > 1 && currentAdminLogin === 'admin'
           ? `<button onclick="removeAdminAccount(${i})" style="background:none;border:none;color:#C03030;font-size:13px;cursor:pointer;padding:4px 8px" title="Supprimer">✕</button>`
           : ADMIN_ACCOUNTS.length <= 1 ? `<span style="font-size:11px;color:#ccc">protégé</span>` : ''}
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 async function addAdminAccount() {
