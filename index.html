@@ -4097,8 +4097,9 @@ function getMCOMBlocAvg(studentId, pilier) {
     // à valider la composante CERTIF (une note < 10 isolée n'invalide pas le bloc).
     // Autres blocs : règle stricte, chaque CERTIF doit individuellement être ≥ 10.
     const isLenientCertifBloc = pilier === 'BLOC 4';
-    const certifMods = allMCOM.filter(m => m.evalType === 'CERTIF');
-    const ccoMods = allMCOM.filter(m => m.evalType === 'CCO');
+    // Exclure les modules remplacés par un rattrapage : c'est le rattrapage qui porte la note.
+    const certifMods = allMCOM.filter(m => m.evalType === 'CERTIF' && !replacedMCOM.has(m.id));
+    const ccoMods = allMCOM.filter(m => m.evalType === 'CCO' && !replacedMCOM.has(m.id));
     const allCertifsHaveNote = certifMods.length > 0 && certifMods.every(m => {
       const g = grades[studentId + '_' + m.id] || {};
       return g.note !== '' && g.note !== undefined && g.note !== null;
