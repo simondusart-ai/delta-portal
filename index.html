@@ -4029,7 +4029,8 @@ function getMCOMBlocAvg(studentId, pilier) {
   // Use same module scope as getModulesForStudent to avoid discrepancies
   const mcomPromos = student.annee === 5 ? ['MCOM1','MCOM2'] : ['MCOM1'];
   const allMCOM = MODULES.filter(m => mcomPromos.includes(m.promo) && m.pilier === pilier
-    && !(student.annee === 4 && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id)));
+    && !(student.annee === 4 && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
+    && (!m.restrictToStudents || m.restrictToStudents.includes(studentId)));
 
   let ccSum = 0, ccCount = 0;
   let ccoSum = 0, ccoCount = 0;
