@@ -4022,40 +4022,46 @@ function getReplacedModuleIds(studentId, mods) {
   return replaced;
 }
 
-function getMCOMBlocAvg(studentId, pilier) {
-  // MCOM formula: CC avg * 20% + CCO (partiel) * 20% + CERTIF avg * 60%
+// ────────────────────────────────────────────────────────────────
+// SOURCE UNIQUE DE VÉRITÉ pour la moyenne d'un bloc MCOM.
+// Utilisée par getMCOMBlocAvg, showBlocDetail et generatePDF.
+// Règle métier : AJ exclu du dénominateur, ANJ compté 0,
+// Val. non compté (pas de note chiffrée), modules "replaced"/"excludeFromAvg" ignorés.
+// ────────────────────────────────────────────────────────────────
+function computeMCOMBlocDetail(studentId, pilier) {
   const student = STUDENTS.find(s => s.id === studentId);
   if (!student || (student.annee !== 4 && student.annee !== 5)) return null;
-  // Use same module scope as getModulesForStudent to avoid discrepancies
   const mcomPromos = student.annee === 5 ? ['MCOM1','MCOM2'] : ['MCOM1'];
   const allMCOM = MODULES.filter(m => mcomPromos.includes(m.promo) && m.pilier === pilier
     && !(student.annee === 4 && NEUTRALIZED_FOR_CURRENT_MCOM1.has(m.id))
     && (!m.restrictToStudents || m.restrictToStudents.includes(studentId)));
 
-  let ccSum = 0, ccCount = 0;
-  let ccoSum = 0, ccoCount = 0;
-  let certifSum = 0, certifCount = 0;
+  const replacedSet = getReplacedModuleIds(studentId, allMCOM);
 
-  const replacedMCOM = getReplacedModuleIds(studentId, allMCOM);
+  function computeSubAvg(modList) {
+    let sum = 0, count = 0;
+    modList.forEach(m => {
+      if (replacedSet.has(m.id) || m.excludeFromAvg) return;
+      const g = grades[studentId + '_' + m.id] || {};
+      if (g.absence === 'AJ') return;
+      if (g.absence === 'ANJ') { sum += 0; count++; return; }
+      if (g.note !== '' && g.note !== undefined && g.note !== null) {
+        sum += parseFloat(g.note); count++;
+      }
+    });
+    return count > 0 ? { avg: sum/count, count } : null;
+  }
 
-  allMCOM.forEach(m => {
-    const k = studentId + '_' + m.id;
-    const g = grades[k] || {};
-    if (m.evalType === 'SOUTENANCE') return; // orals aggregated separately below
-    if (replacedMCOM.has(m.id)) return; // note remplacée par un rattrapage
-    if (g.absence === 'AJ') return;
-    const note = g.note !== undefined && g.note !== '' && g.note !== null ? parseFloat(g.note) : null;
-    if (note === null) return;
-    if (m.evalType === 'CC') { ccSum += note; ccCount++; }
-    else if (m.evalType === 'CCO') { ccoSum += note; ccoCount++; }
-    else if (m.evalType === 'CERTIF') { certifSum += note; certifCount++; }
-  });
+  const ccMods    = allMCOM.filter(m => m.evalType === 'CC');
+  const ccoMods   = allMCOM.filter(m => m.evalType === 'CCO');
+  const certifMods = allMCOM.filter(m => m.evalType === 'CERTIF');
+  const oralMods  = allMCOM.filter(m => m.evalType === 'SOUTENANCE');
 
-  // Aggregate ALL orals of the bloc (a bloc can have several, e.g. MCOM bloc 2 = 2 orals):
-  // - false if at least one graded oral is non acquis
-  // - true only if every oral is graded AND every oral is acquis
-  // - null otherwise (at least one still pending, no failure recorded yet)
-  const oralMods = allMCOM.filter(m => m.evalType === 'SOUTENANCE');
+  const ccCalc = computeSubAvg(ccMods);
+  const ccoCalc = computeSubAvg(ccoMods);
+  const certifCalc = computeSubAvg(certifMods);
+
+  // Oral aggregate
   const oralResults = oralMods.map(m => {
     const g = grades[studentId + '_' + m.id] || {};
     if (g.nonAcquis === undefined || g.nonAcquis === '') return null;
@@ -4065,74 +4071,81 @@ function getMCOMBlocAvg(studentId, pilier) {
   if (oralResults.some(r => r === false)) oralAcquis = false;
   else if (oralResults.length > 0 && oralResults.every(r => r === true)) oralAcquis = true;
 
-  const ccAvg = ccCount > 0 ? ccSum / ccCount : null;
-  const ccoAvg = ccoCount > 0 ? ccoSum / ccoCount : null;
-  const certifAvg = certifCount > 0 ? certifSum / certifCount : null;
+  if (!ccCalc && !ccoCalc && !certifCalc && oralResults.every(r => r === null)) return null;
 
-  // Need at least one component to show anything
-  if (ccAvg === null && ccoAvg === null && certifAvg === null) return null;
+  // Weighted average
+  let wSum = 0, wTotal = 0;
+  if (ccCalc)     { wSum += ccCalc.avg * 0.2;     wTotal += 0.2; }
+  if (ccoCalc)    { wSum += ccoCalc.avg * 0.2;    wTotal += 0.2; }
+  if (certifCalc) { wSum += certifCalc.avg * 0.6; wTotal += 0.6; }
+  const hasCertif = certifCalc !== null;
+  const blocTotal = hasCertif && wTotal > 0 ? wSum / wTotal : null;
+  const avg = hasCertif && wTotal > 0 ? wSum / wTotal : 0;
+  const filled = (ccCalc ? ccCalc.count : 0) + (ccoCalc ? ccoCalc.count : 0) + (certifCalc ? certifCalc.count : 0);
 
-  // Weighted average — only meaningful when certif is present
-  // Without certif: show '—' in column (avg=0, filled controls display)
-  let weightedSum = 0, weightedTotal = 0;
-  if (ccAvg !== null) { weightedSum += ccAvg * 0.2; weightedTotal += 0.2; }
-  if (ccoAvg !== null) { weightedSum += ccoAvg * 0.2; weightedTotal += 0.2; }
-  if (certifAvg !== null) { weightedSum += certifAvg * 0.6; weightedTotal += 0.6; }
-
-  // True weighted avg only computable when certif is present
-  const hasCertif = certifAvg !== null;
-  const avg = hasCertif && weightedTotal > 0 ? weightedSum / weightedTotal : 0;
-  const filled = ccCount + ccoCount + certifCount;
-
-  // Bloc status rules (MCOM règlement):
-  // Un bloc est validé si la moyenne des composantes DISPONIBLES >= 10
-  // ET l'oral acquis (si applicable).
-  // On ne bloque PAS sur l'absence de certif/CCO — ils peuvent arriver plus tard.
+  // Bloc status
   let blocStatus = null;
-  const hasOralModule = allMCOM.some(m => m.evalType === 'SOUTENANCE');
-
+  const hasOralModule = oralMods.length > 0;
   if (filled > 0 || oralAcquis !== null) {
-    const avgOk = weightedTotal > 0 && avg >= 10;
-    // Bloc 4 MCOM : épreuves CERTIF écrites compensables — la moyenne des CERTIFs ≥ 10 suffit
-    // à valider la composante CERTIF (une note < 10 isolée n'invalide pas le bloc).
-    // Autres blocs : règle stricte, chaque CERTIF doit individuellement être ≥ 10.
+    const avgOk = wTotal > 0 && avg >= 10;
     const isLenientCertifBloc = pilier === 'BLOC 4';
-    // Exclure les modules remplacés par un rattrapage : c'est le rattrapage qui porte la note.
-    const certifMods = allMCOM.filter(m => m.evalType === 'CERTIF' && !replacedMCOM.has(m.id));
-    const ccoMods = allMCOM.filter(m => m.evalType === 'CCO' && !replacedMCOM.has(m.id));
-    const allCertifsHaveNote = certifMods.length > 0 && certifMods.every(m => {
+    const certifModsNotRep = certifMods.filter(m => !replacedSet.has(m.id));
+    const ccoModsNotRep = ccoMods.filter(m => !replacedSet.has(m.id));
+    const allCertifsHaveNote = certifModsNotRep.length > 0 && certifModsNotRep.every(m => {
       const g = grades[studentId + '_' + m.id] || {};
       return g.note !== '' && g.note !== undefined && g.note !== null;
     });
     const allCertifPresent = isLenientCertifBloc
-      ? (allCertifsHaveNote && certifAvg !== null && certifAvg >= 10)
-      : (certifMods.length > 0 && certifMods.every(m => {
+      ? (allCertifsHaveNote && certifCalc !== null && certifCalc.avg >= 10)
+      : (certifModsNotRep.length > 0 && certifModsNotRep.every(m => {
           const g = grades[studentId + '_' + m.id] || {};
           return g.note !== '' && g.note !== undefined && g.note !== null && parseFloat(g.note) >= 10;
         }));
-    const allCCOPresent = ccoMods.length === 0 || ccoMods.every(m => {
+    const allCCOPresent = ccoModsNotRep.length === 0 || ccoModsNotRep.every(m => {
       const g = grades[studentId + '_' + m.id] || {};
       return g.note !== '' && g.note !== undefined && g.note !== null;
     });
     const anyCertifFailed = isLenientCertifBloc
-      ? (allCertifsHaveNote && certifAvg !== null && certifAvg < 10)
-      : certifMods.some(m => {
+      ? (allCertifsHaveNote && certifCalc !== null && certifCalc.avg < 10)
+      : certifModsNotRep.some(m => {
           const g = grades[studentId + '_' + m.id] || {};
           return g.note !== '' && g.note !== undefined && g.note !== null && parseFloat(g.note) < 10;
         });
-
     if (hasOralModule) {
       if (allCertifPresent && allCCOPresent && avgOk && oralAcquis === true) blocStatus = 'valide';
       else if (anyCertifFailed || oralAcquis === false) blocStatus = 'rattrapage';
       else blocStatus = 'en_cours';
     } else {
-      // Bloc 4: no oral, need all certifs present and passing
       if (allCertifPresent && allCCOPresent && avgOk) blocStatus = 'valide';
       else if (anyCertifFailed) blocStatus = 'rattrapage';
       else blocStatus = 'en_cours';
     }
   }
-  return { avg, filled, ccAvg, ccoAvg, certifAvg, oralAcquis, blocStatus };
+
+  return {
+    ccCalc, ccoCalc, certifCalc,
+    ccMods, ccoMods, certifMods, oralMods,
+    replacedSet, oralAcquis,
+    avg, blocTotal, filled, hasCertif,
+    blocStatus,
+    ccAvg: ccCalc ? ccCalc.avg : null,
+    ccoAvg: ccoCalc ? ccoCalc.avg : null,
+    certifAvg: certifCalc ? certifCalc.avg : null,
+  };
+}
+
+function getMCOMBlocAvg(studentId, pilier) {
+  const d = computeMCOMBlocDetail(studentId, pilier);
+  if (!d) return null;
+  return {
+    avg: d.avg,
+    filled: d.filled,
+    ccAvg: d.ccAvg,
+    ccoAvg: d.ccoAvg,
+    certifAvg: d.certifAvg,
+    oralAcquis: d.oralAcquis,
+    blocStatus: d.blocStatus,
+  };
 }
 
 function showBlocDetail(studentId, cls, singlePilier) {
@@ -9372,54 +9385,23 @@ function generatePDF(student, options) {
     });
 
     piliersMCOM2.forEach(pilier => {
-      const modsPil = MODULES.filter(m =>
-        m.pilier === pilier && mcomPromosPdf.includes(m.promo)
-        && (!m.restrictToStudents || m.restrictToStudents.includes(student.id))
-      );
-      if (!modsPil.length) return;
+      // Source unique de vérité : computeMCOMBlocDetail
+      const detail = computeMCOMBlocDetail(student.id, pilier);
+      if (!detail) return;
+      const { ccCalc, ccoCalc, certifCalc, ccMods, ccoMods, certifMods, oralMods,
+              replacedSet, blocTotal, blocStatus, avg, filled } = detail;
+      // Si aucun module rattaché à cet étudiant dans ce bloc, on saute
+      if (ccMods.length + ccoMods.length + certifMods.length + oralMods.length === 0) return;
 
-      const pa = getPilierAvg(student.id, pilier);
       const label = pilierLabelsMCOM2[pilier] || pilier;
-      const avgStrPil = pa && (pa.count > 0 || pa.filled > 0) ? fmtFR(pa.avg)+' / 20' : '-';
+      const avgStrPil = blocTotal !== null ? fmtFR(blocTotal)+' / 20' : '-';
       let statusColorPil = [146,98,10], statusLabelPil = 'En cours';
-      if (pa) {
-        if (pa.blocStatus === 'valide')     { statusLabelPil = 'Validé';     statusColorPil = [45,122,74]; }
-        else if (pa.blocStatus === 'rattrapage') { statusLabelPil = 'Rattrapage'; statusColorPil = [192,48,48]; }
-      }
-
-      const ccMods    = modsPil.filter(m => m.evalType === 'CC');
-      const ccoMods   = modsPil.filter(m => m.evalType === 'CCO');
-      const certifMods = modsPil.filter(m => m.evalType === 'CERTIF');
-      const oralMods  = modsPil.filter(m => m.evalType === 'SOUTENANCE');
-      const replacedSet = getReplacedModuleIds(student.id, modsPil);
-
-      function calcSubAvgPil(modList) {
-        let s = 0, c = 0;
-        modList.forEach(m => {
-          if (replacedSet.has(m.id) || m.excludeFromAvg) return;
-          const g = grades[student.id + '_' + m.id] || {};
-          if (g.absence === 'AJ') return;
-          if (g.absence === 'ANJ') { s += 0; c++; return; }
-          if (g.note !== '' && g.note !== undefined && g.note !== null) {
-            s += parseFloat(g.note); c++;
-          }
-        });
-        return c > 0 ? { avg: s/c, count: c } : null;
-      }
-
-      const ccCalc = calcSubAvgPil(ccMods);
-      const ccoCalc = calcSubAvgPil(ccoMods);
-      const certifCalc = calcSubAvgPil(certifMods);
-
-      let wSum = 0, wTotal = 0;
-      if (ccCalc)     { wSum += ccCalc.avg * 0.2; wTotal += 0.2; }
-      if (ccoCalc)    { wSum += ccoCalc.avg * 0.2; wTotal += 0.2; }
-      if (certifCalc) { wSum += certifCalc.avg * 0.6; wTotal += 0.6; }
-      const blocTotal = certifCalc && wTotal > 0 ? (wSum / wTotal) : null;
+      if (blocStatus === 'valide')     { statusLabelPil = 'Validé';     statusColorPil = [45,122,74]; }
+      else if (blocStatus === 'rattrapage') { statusLabelPil = 'Rattrapage'; statusColorPil = [192,48,48]; }
 
       // Hauteur estimée pour le saut de page
       const headerBlocH = 10;
-      const calcBoxH = 22;
+      const calcBoxH = 26; // contient CC/CCO/Certif + ligne total, sans débordement
       const groupBlockH = (list) => list.length ? (5 + list.length * 4.5 + 3) : 0;
       const blocHEst = headerBlocH + calcBoxH
         + groupBlockH(ccMods) + groupBlockH(ccoMods)
@@ -9559,46 +9541,61 @@ function generatePDF(student, options) {
       y += 4;
     });
 
-    // Légende des codes (AJ, ANJ, Val., -) sous la section notes
+    // Légende des codes (Acquis, AJ, ANJ, Val., -) sous la section notes
     if (y + 14 > PAGE_BOTTOM) {
       drawFooter(); doc.addPage(); pageNum++; drawHeader(pageNum); y = 42;
     }
     doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(110);
-    doc.text("Légende : AJ = absence justifiée (non comptée) · ANJ = absence non justifiée (comptée 0) · Val. = validé sans note chiffrée · - = épreuve à venir", M, y);
+    doc.text("Légende : Acquis = épreuve orale validée (voir grille) · AJ = absence justifiée (non comptée) · ANJ = absence non justifiée (comptée 0) · Val. = validé sans note chiffrée · - = épreuve à venir", M, y);
     y += 6;
 
-    // Titre section "Appréciations par matière"
-    if (y + 20 > PAGE_BOTTOM) {
-      drawFooter(); doc.addPage(); pageNum++; drawHeader(pageNum); y = 42;
-    }
-    y += 2;
+    // Saut de page systématique avant la section "Appréciations par matière"
+    drawFooter(); doc.addPage(); pageNum++; drawHeader(pageNum); y = 42;
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(0);
     doc.text('Appréciations par matière', M, y);
     y += 5;
 
-    // Tri strict par bloc pour l'affichage des rows dans la table modules
+    // Tri strict par bloc PUIS par typologie (CC / CCO / CERTIF / SOUTENANCE)
     const pilierOrderPdf = {'BLOC 1':1,'BLOC 2':2,'BLOC 3':3,'BLOC 4':4,'TRANSVERSE':5};
+    const evalTypeOrder = {'CC':1, 'CCO':2, 'CERTIF':3, 'SOUTENANCE':4};
     studentMods.sort((a,b) => {
       const pa = pilierOrderPdf[a.pilier] || 99;
       const pb = pilierOrderPdf[b.pilier] || 99;
       if (pa !== pb) return pa - pb;
-      return 0;
+      const ta = evalTypeOrder[a.evalType] || 9;
+      const tb = evalTypeOrder[b.evalType] || 9;
+      return ta - tb;
     });
-    // Rebuild rows in the new order
+    // Rebuild rows in the new order — même logique de codes que la section Moyennes
     rows.length = 0;
     let lastPilier = '';
     studentMods.forEach((m, i) => {
       const k = student.id + '_' + m.id;
       const g = grades[k] || {};
       let noteStr = '-';
-      if (g.absence === 'AJ') noteStr = 'AJ';
+      // Statut oral : même source que la section Moyennes
+      if (m.evalType === 'SOUTENANCE') {
+        const acq = g.nonAcquis !== undefined && g.nonAcquis !== '' ? parseInt(g.nonAcquis) === 0 : null;
+        if (acq === true) noteStr = 'Acquis';
+        else if (acq === false) noteStr = 'Non acquis';
+        else if (g.valide) noteStr = 'Val.';
+        else if (g.absence === 'AJ') noteStr = 'AJ';
+        else if (g.absence === 'ANJ') noteStr = 'ANJ';
+      } else if (g.absence === 'AJ') noteStr = 'AJ';
       else if (g.absence === 'ANJ') noteStr = 'ANJ';
       else if (g.valide && (!g.note || g.note === '')) noteStr = 'Val.';
       else if (g.note !== undefined && g.note !== '' && g.note !== null) {
         const n = parseFloat(g.note);
-        noteStr = isNaN(n) ? '-' : (n % 1 === 0 ? String(n).replace('.',',') : fmtFR(n));
+        noteStr = isNaN(n) ? '-' : fmtFR(n);
       }
-      const commentRaw = normalizeCommentPdf(g.commentaire) || (noteStr === '-' ? 'À venir' : '');
+      // Placeholder commentaire selon le statut (uniquement si aucun commentaire saisi)
+      let commentRaw = normalizeCommentPdf(g.commentaire);
+      if (!commentRaw) {
+        if (noteStr === 'Acquis') commentRaw = "Voir grille d'évaluation";
+        else if (noteStr === 'Val.') commentRaw = "Validé, pas d'appréciation individuelle";
+        else if (noteStr === '-') commentRaw = 'À venir';
+        else commentRaw = '';
+      }
       doc.setFontSize(FONT_SIZE_COMM);
       const commentLines = doc.splitTextToSize(commentRaw, COL_COMMENT - 3);
       const modLines = doc.splitTextToSize(m.nom, COL_MODULE - 3);
@@ -9646,22 +9643,26 @@ function generatePDF(student, options) {
       doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(180);
     } else if (row.noteStr === 'AJ' || row.noteStr === 'ANJ') {
       doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(160, 100, 0);
-    } else if (row.noteStr === 'Val.') {
+    } else if (row.noteStr === 'Val.' || row.noteStr === 'Acquis') {
       doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(40, 130, 70);
+    } else if (row.noteStr === 'Non acquis') {
+      doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(200, 30, 30);
     } else {
-      const n = parseFloat(row.noteStr);
+      const n = parseFloat(row.noteStr.replace(',', '.'));
       doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
       doc.setTextColor(n >= 10 ? 30 : 200, n >= 10 ? 110 : 30, n >= 10 ? 50 : 30);
     }
     doc.text(row.noteStr, noteX, y + row.rowH/2 + 2.5);
 
-    // Comment (multi-line)
+    // Comment (multi-line) — placeholders en style grisé italique cohérent
     const commX = M + COL_PILIER + COL_MODULE + COL_NOTE + 2;
-    doc.setFont('helvetica','normal'); doc.setFontSize(FONT_SIZE_COMM);
-    if (row.commentLines[0] === 'À venir') {
-      doc.setTextColor(180);
+    const isPlaceholder = row.commentLines[0] === 'À venir'
+      || row.commentLines[0] === "Voir grille d'évaluation"
+      || row.commentLines[0] === "Validé, pas d'appréciation individuelle";
+    if (isPlaceholder) {
+      doc.setFont('helvetica','italic'); doc.setFontSize(FONT_SIZE_COMM); doc.setTextColor(150);
     } else {
-      doc.setTextColor(80);
+      doc.setFont('helvetica','normal'); doc.setFontSize(FONT_SIZE_COMM); doc.setTextColor(80);
     }
     row.commentLines.forEach((line, li) => {
       doc.text(line, commX, y + 5 + li * 4.2);
