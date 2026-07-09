@@ -9315,6 +9315,214 @@ function generatePDF(student, options) {
   drawHeader(pageNum);
   let y = 42;
   y = drawStudentInfo(y);
+
+  const isMCOM2pdf = student.annee === 5;
+
+  if (isMCOM2pdf) {
+    // ── M2 : Moyenne générale + Section "Moyennes par bloc" détaillée en haut ──
+    const {avg: mAvg, filled: mFilled} = getStudentAvg(student);
+    doc.setDrawColor(180); doc.setLineWidth(0.3);
+    doc.line(M, y, M+cW, y);
+    y += 6;
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(0);
+    doc.text('Moyenne générale :', M, y);
+    doc.setFont('helvetica','normal');
+    doc.text(mFilled > 0 ? mAvg.toFixed(2)+' / 20' : '—', M+34, y);
+    if (mFilled > 0) {
+      const mention = getMention(mAvg);
+      doc.setFont('helvetica','bold'); doc.setTextColor(30,110,50);
+      doc.text(mention, M+70, y);
+    }
+    y += 10;
+
+    // Titre section
+    if (y + 12 > PAGE_BOTTOM) { drawFooter(); doc.addPage(); pageNum++; drawHeader(pageNum); y = 42; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(0);
+    doc.text('Moyennes par bloc', M, y);
+    y += 6;
+
+    const piliersMCOM2 = ['BLOC 1','BLOC 2','BLOC 3','BLOC 4'];
+    const pilierLabelsMCOM2 = {'BLOC 1':'Bloc 1','BLOC 2':'Bloc 2','BLOC 3':'Bloc 3','BLOC 4':'Bloc 4'};
+    const mcomPromosPdf = ['MCOM1','MCOM2'];
+
+    piliersMCOM2.forEach(pilier => {
+      const modsPil = MODULES.filter(m =>
+        m.pilier === pilier && mcomPromosPdf.includes(m.promo)
+        && (!m.restrictToStudents || m.restrictToStudents.includes(student.id))
+      );
+      if (!modsPil.length) return;
+
+      const pa = getPilierAvg(student.id, pilier);
+      const label = pilierLabelsMCOM2[pilier] || pilier;
+      const avgStrPil = pa && (pa.count > 0 || pa.filled > 0) ? pa.avg.toFixed(2)+' / 20' : '—';
+      let statusColorPil = [146,98,10], statusLabelPil = 'En cours';
+      if (pa) {
+        if (pa.blocStatus === 'valide')     { statusLabelPil = 'Validé';     statusColorPil = [45,122,74]; }
+        else if (pa.blocStatus === 'rattrapage') { statusLabelPil = 'Rattrapage'; statusColorPil = [192,48,48]; }
+      }
+
+      const ccMods    = modsPil.filter(m => m.evalType === 'CC');
+      const ccoMods   = modsPil.filter(m => m.evalType === 'CCO');
+      const certifMods = modsPil.filter(m => m.evalType === 'CERTIF');
+      const oralMods  = modsPil.filter(m => m.evalType === 'SOUTENANCE');
+      const replacedSet = getReplacedModuleIds(student.id, modsPil);
+
+      function calcSubAvgPil(modList) {
+        let s = 0, c = 0;
+        modList.forEach(m => {
+          if (replacedSet.has(m.id) || m.excludeFromAvg) return;
+          const g = grades[student.id + '_' + m.id] || {};
+          if (g.absence === 'AJ') return;
+          if (g.absence === 'ANJ') { s += 0; c++; return; }
+          if (g.note !== '' && g.note !== undefined && g.note !== null) {
+            s += parseFloat(g.note); c++;
+          }
+        });
+        return c > 0 ? { avg: s/c, count: c } : null;
+      }
+
+      const ccCalc = calcSubAvgPil(ccMods);
+      const ccoCalc = calcSubAvgPil(ccoMods);
+      const certifCalc = calcSubAvgPil(certifMods);
+
+      let wSum = 0, wTotal = 0;
+      if (ccCalc)     { wSum += ccCalc.avg * 0.2; wTotal += 0.2; }
+      if (ccoCalc)    { wSum += ccoCalc.avg * 0.2; wTotal += 0.2; }
+      if (certifCalc) { wSum += certifCalc.avg * 0.6; wTotal += 0.6; }
+      const blocTotal = certifCalc && wTotal > 0 ? (wSum / wTotal).toFixed(2) : null;
+
+      // Hauteur estimée pour le saut de page
+      const headerBlocH = 9;
+      const calcBoxH = 22;
+      const groupBlockH = (list) => list.length ? (5 + list.length * 4.5 + 3) : 0;
+      const blocHEst = headerBlocH + calcBoxH
+        + groupBlockH(ccMods) + groupBlockH(ccoMods)
+        + groupBlockH(certifMods) + groupBlockH(oralMods) + 6;
+
+      if (y + Math.min(blocHEst, PAGE_BOTTOM - 42 - 5) > PAGE_BOTTOM) {
+        drawFooter(); doc.addPage(); pageNum++; drawHeader(pageNum); y = 42;
+      }
+
+      // Bandeau titre du bloc : nom + moyenne + badge statut
+      doc.setFillColor(248,248,246);
+      doc.roundedRect(M, y, cW, headerBlocH, 2, 2, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(0);
+      doc.text(label, M+3, y+6);
+      doc.setFont('helvetica','bold'); doc.setFontSize(10);
+      doc.setTextColor(statusColorPil[0], statusColorPil[1], statusColorPil[2]);
+      const badgeW = 28, badgeH = 5.5;
+      doc.text(avgStrPil, M+cW-badgeW-6, y+6, {align:'right'});
+      doc.setFillColor(statusColorPil[0], statusColorPil[1], statusColorPil[2]);
+      doc.roundedRect(M+cW-badgeW-3, y+1.7, badgeW, badgeH, 1.5, 1.5, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+      doc.text(statusLabelPil, M+cW-badgeW/2-3, y+5.5, {align:'center'});
+      y += headerBlocH + 1;
+
+      // Boîte "Calcul de la moyenne du bloc"
+      doc.setFillColor(240,240,238);
+      doc.roundedRect(M, y, cW, calcBoxH, 1.5, 1.5, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(120);
+      doc.text('CALCUL DE LA MOYENNE DU BLOC', M+3, y+4);
+      let yy = y + 8;
+      const fmtCalcLine = (lbl, calc, pct) => {
+        doc.setFont('helvetica','normal'); doc.setFontSize(8);
+        if (calc) {
+          doc.setTextColor(40);
+          const contrib = (calc.avg * pct).toFixed(2);
+          doc.text(`${lbl} × ${Math.round(pct*100)}% = ${contrib}   (moy. ${calc.avg.toFixed(2)}, ${calc.count} module${calc.count>1?'s':''})`, M+5, yy);
+        } else {
+          doc.setTextColor(160);
+          doc.text(`${lbl} × ${Math.round(pct*100)}% = en attente`, M+5, yy);
+        }
+        yy += 4.2;
+      };
+      fmtCalcLine('CC', ccCalc, 0.2);
+      fmtCalcLine('CCO', ccoCalc, 0.2);
+      fmtCalcLine('Certif', certifCalc, 0.6);
+      doc.setDrawColor(215); doc.setLineWidth(0.15);
+      doc.line(M+5, yy-1.5, M+cW-5, yy-1.5);
+      doc.setFont('helvetica','bold'); doc.setFontSize(9);
+      if (blocTotal) {
+        doc.setTextColor(0);
+        doc.text(`= ${blocTotal} / 20`, M+5, yy+2);
+      } else {
+        doc.setTextColor(120);
+        doc.setFont('helvetica','italic'); doc.setFontSize(8);
+        doc.text('= en attente (certif non saisie)', M+5, yy+2);
+      }
+      y += calcBoxH + 3;
+
+      // Sous-tables par typologie
+      function drawGroupPdf(groupLabel, groupMods, weightStr) {
+        if (!groupMods.length) return;
+        const estH = 5 + groupMods.length * 4.5 + 3;
+        if (y + estH > PAGE_BOTTOM) {
+          drawFooter(); doc.addPage(); pageNum++; drawHeader(pageNum); y = 42;
+        }
+        doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(110);
+        doc.text(groupLabel + (weightStr ? '   ' + weightStr : ''), M+2, y+3);
+        y += 4.5;
+        groupMods.forEach(m => {
+          const g = grades[student.id + '_' + m.id] || {};
+          const isReplaced = replacedSet.has(m.id);
+          let noteStr = '—', noteColor = [180,180,180];
+          if (g.absence === 'AJ') { noteStr = 'AJ'; noteColor = [146,98,10]; }
+          else if (g.absence === 'ANJ') { noteStr = 'ANJ (0)'; noteColor = [192,48,48]; }
+          else if (m.evalType === 'SOUTENANCE') {
+            const acq = g.nonAcquis !== undefined && g.nonAcquis !== '' ? parseInt(g.nonAcquis) === 0 : null;
+            if (acq === true) { noteStr = 'Acquis'; noteColor = [45,122,74]; }
+            else if (acq === false) { noteStr = 'Non acquis'; noteColor = [192,48,48]; }
+            else if (g.valide) { noteStr = 'Val.'; noteColor = [45,122,74]; }
+          } else if (g.note !== '' && g.note !== undefined && g.note !== null) {
+            const n = parseFloat(g.note);
+            noteStr = n.toFixed(2);
+            noteColor = n >= 10 ? [45,122,74] : [192,48,48];
+          } else if (g.valide) { noteStr = 'Val.'; noteColor = [45,122,74]; }
+
+          const yearTag = (m.promo === 'MCOM1' || m.promo === 'MCOM2') ? ' [' + m.promo + ']' : '';
+          doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(60);
+          const modLabelPdf = m.nom + yearTag;
+          const modLines = doc.splitTextToSize(modLabelPdf, cW - 40);
+          doc.text(modLines[0], M+4, y+3);
+
+          if (isReplaced) {
+            doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(140);
+            doc.text('remplacée', M+cW-22, y+3, {align:'right'});
+            doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(180);
+            doc.text(noteStr, M+cW-4, y+3, {align:'right'});
+          } else if (m.excludeFromAvg) {
+            doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(140);
+            doc.text('hors moyenne', M+cW-24, y+3, {align:'right'});
+            doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(noteColor[0], noteColor[1], noteColor[2]);
+            doc.text(noteStr, M+cW-4, y+3, {align:'right'});
+          } else {
+            doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(noteColor[0], noteColor[1], noteColor[2]);
+            doc.text(noteStr, M+cW-4, y+3, {align:'right'});
+          }
+          doc.setDrawColor(240); doc.setLineWidth(0.1);
+          doc.line(M+2, y+4.5, M+cW-2, y+4.5);
+          y += 4.5;
+        });
+        y += 3;
+      }
+
+      drawGroupPdf('CC', ccMods, '× 20%');
+      drawGroupPdf('CCO (Partiel)', ccoMods, '× 20%');
+      drawGroupPdf('Certif', certifMods, '× 60%');
+      drawGroupPdf('Oral', oralMods, null);
+      y += 4;
+    });
+
+    // Titre section "Appréciations par matière"
+    if (y + 20 > PAGE_BOTTOM) {
+      drawFooter(); doc.addPage(); pageNum++; drawHeader(pageNum); y = 42;
+    }
+    y += 2;
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(0);
+    doc.text('Appréciations par matière', M, y);
+    y += 5;
+  }
+
   y = drawTableHeader(y);
 
   rows.forEach((row, ri) => {
@@ -9377,38 +9585,42 @@ function generatePDF(student, options) {
   });
 
   // ── Signature / average block ──
-  y += 6;
-  if (y + 30 > PAGE_BOTTOM) {
-    drawFooter();
-    doc.addPage();
-    pageNum++;
-    drawHeader(pageNum);
-    y = 42;
-  }
-
-  doc.setDrawColor(180); doc.setLineWidth(0.3);
-  doc.line(M, y, M+cW, y);
-  y += 6;
-
-  // Moyenne
-  const {avg, filled} = getStudentAvg(student);
-  doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(0);
-  doc.text('Moyenne générale :', M, y);
-  doc.setFont('helvetica','normal');
-  doc.text(filled > 0 ? avg.toFixed(2)+' / 20' : '—', M+34, y);
-
-  // Mention
-  if (filled > 0) {
-    const mention = getMention(avg);
-    doc.setFont('helvetica','bold'); doc.setTextColor(30,110,50);
-    doc.text(mention, M+70, y);
-  }
-
-  // Signature — drawn after commentaire général box (see below)
+  // Pour les MCOM2, la moyenne générale est déjà rendue en haut (avant la section "Moyennes par bloc")
   const SIG_W = 38, SIG_H = 13;
   const sigX = M + cW - SIG_W;
-  // (signature placed after commentaire général below)
-  y += 8;
+
+  if (!isMCOM2pdf) {
+    y += 6;
+    if (y + 30 > PAGE_BOTTOM) {
+      drawFooter();
+      doc.addPage();
+      pageNum++;
+      drawHeader(pageNum);
+      y = 42;
+    }
+
+    doc.setDrawColor(180); doc.setLineWidth(0.3);
+    doc.line(M, y, M+cW, y);
+    y += 6;
+
+    // Moyenne
+    const {avg, filled} = getStudentAvg(student);
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(0);
+    doc.text('Moyenne générale :', M, y);
+    doc.setFont('helvetica','normal');
+    doc.text(filled > 0 ? avg.toFixed(2)+' / 20' : '—', M+34, y);
+
+    // Mention
+    if (filled > 0) {
+      const mention = getMention(avg);
+      doc.setFont('helvetica','bold'); doc.setTextColor(30,110,50);
+      doc.text(mention, M+70, y);
+    }
+
+    y += 8;
+  } else {
+    y += 4;
+  }
 
   // ── Section "Moyennes par bloc" (Bachelor 1 & 2 uniquement) ──
   const isB1B2pdf = student.annee === 1 || student.annee === 2;
