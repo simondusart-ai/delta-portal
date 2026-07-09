@@ -9541,13 +9541,18 @@ function generatePDF(student, options) {
       y += 4;
     });
 
-    // Légende des codes (Acquis, AJ, ANJ, Val., -) sous la section notes
-    if (y + 14 > PAGE_BOTTOM) {
+    // Légende des codes (Acquis, AJ, ANJ, Val.) — wrap automatique sur la largeur utile
+    doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(110);
+    const legendText = "Légende : Acquis = épreuve orale validée (voir grille) · AJ = absence justifiée (non comptée) · ANJ = absence non justifiée (comptée 0) · Val. = validé sans note chiffrée";
+    const legendLines = doc.splitTextToSize(legendText, cW);
+    const legendH = legendLines.length * 3.5 + 3;
+    if (y + legendH > PAGE_BOTTOM) {
       drawFooter(); doc.addPage(); pageNum++; drawHeader(pageNum); y = 42;
     }
-    doc.setFont('helvetica','italic'); doc.setFontSize(7); doc.setTextColor(110);
-    doc.text("Légende : Acquis = épreuve orale validée (voir grille) · AJ = absence justifiée (non comptée) · ANJ = absence non justifiée (comptée 0) · Val. = validé sans note chiffrée · - = épreuve à venir", M, y);
-    y += 6;
+    legendLines.forEach((ln, li) => {
+      doc.text(ln, M, y + li * 3.5);
+    });
+    y += legendH;
 
     // Saut de page systématique avant la section "Appréciations par matière"
     drawFooter(); doc.addPage(); pageNum++; drawHeader(pageNum); y = 42;
